@@ -20,18 +20,30 @@ In addition, if you'd like to use the ATAC CNV module, you should install the fo
 
 scAmp's ATAC CNV module was tested with R version 4.3.2 (and should work with later versions).
 
+To use the visualization module, you should run `pip install cellxgene`
+
 ## Running scAmp from the command line
 
 You can invoke `scamp` modules from the command line by running
 
 `scamp [module] [arguments]`
 
-Currently there are two command line modules you can run:
+Currently there are three command line modules you can run:
 
 * `scamp atac-cnv`: Computes copy-numbers across genes from a scATAC fragments files.
 * `scamp predict`: Predicts ecDNA status from copy-number data.
+* `scamp visualize`: Visualizes results on cellxgene after running `predict`
 
 You can look at usage instructions for these modules by running `scamp [module] --help`.
+
+## Visualization
+
+After running visualization once on a dataset, it will generate two files in your specified temp folder:
+
+* `annotated_anndata.h5ad`: Anndata with ecDNA cell set annotations
+* `ecDNA_gene_set.csv`: Gene sets for ecDNA
+
+If you want to visualize the same dataset again, you can then just run `cellxgene launch [temp_folder]/annotated_anndata.h5ad --gene-sets-file [temp_folder]/ecDNA_gene_set.csv --open`
 
 ## Pretrained models
 
