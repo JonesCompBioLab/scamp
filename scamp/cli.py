@@ -128,9 +128,10 @@ def visualize(
     os.makedirs(temp_folder, exist_ok=True)
     if mode == "anndata" :
         #TODO: call vis.setup_anndata instead
-        setup_anndata(anndata_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold)
+        adata = ad.read_h5ad(anndata_file)
+        setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold)
     else :
-        setup_copynumber()    
+        setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold)    
     os.system(f"cellxgene launch {temp_folder}/annotated_anndata.h5ad --gene-sets-file {temp_folder}/ecDNA_gene_set.csv --open")
 
 
@@ -195,7 +196,7 @@ import anndata as ad
 import numpy as np
 
 # Get all the correct settings for visualization
-def setup_anndata(anndata_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold) :
+def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold) :
     
     # Making gene set
     scamp = pd.read_csv(scamp_tsv, sep = "\t")
@@ -216,9 +217,7 @@ def setup_anndata(anndata_file, scamp_tsv, temp_folder, cn_threshold, cn_percent
     
     gene_set_df.to_csv(f"{temp_folder}/ecDNA_gene_set.csv", index = False)
 
-
-    # If we start with anndata
-    adata = ad.read_h5ad(anndata_file)
+    
 
     # cellxgene needs an embedding, make sure we have one
     get_umap(adata, temp_folder)
@@ -242,6 +241,21 @@ def setup_anndata(anndata_file, scamp_tsv, temp_folder, cn_threshold, cn_percent
     adata.write(f"{temp_folder}/annotated_anndata.h5ad")
 
 
+def setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold) :
+    # Create anndata from tsv
+    counts_df = pd.read_csv(copy_numbers_file, sep='\t')
+    var = pd.DataFrame({
+        'idx': range(1, counts_df.shape[1] + 1)
+    }, index=counts_df.columns)
+    obs = pd.DataFrame(index=counts_df.index)
+
+    adata = ad.AnnData(X=counts_df.values, obs=obs, var=var)
+    adata.uns['X_name'] = 'GeneScoreMatrix'
+
+    # Call rest of the pipeline
+    setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold)
+
+
 # Create a umap if one doesn't exist
 def get_umap(adata, temp_folder) :
     if "X_umap" not in adata.obsm :
@@ -260,6 +274,7 @@ def get_umap(adata, temp_folder) :
         adata.obsp.clear()
         adata.varm.clear()
 
+        # Clean up for cellxgene
         for key in list(adata.obsm.keys()):
             if key not in ["X_umap"]:
                 del adata.obsm[key]
