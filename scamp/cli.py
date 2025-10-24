@@ -15,6 +15,8 @@ from scamp import io
 from scamp.mixins import CLIError
 from scamp import predict
 from scamp import plotting
+# TODO: activate
+# from scamp import vis
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
@@ -101,6 +103,38 @@ def quantify_copy_numbers(
         f"{copy_number_directory} {output_directory} {reference_genome_name}"
     )
 
+@scamp_app.command(name="visualize", help="Visualize ecDNA results with cellxgene")
+def visualize(
+    copy_numbers_file: CopyNumberFileArg = None,
+    anndata_file: AnnDataFileArg = None,
+    mode: Annotated[
+        str, typer.Option(help="Mode: anndata copynumber")
+    ] = "copynumber",
+    scamp_tsv: Annotated[
+        str, typer.Option(help="Scamp Predict tsv")
+    ] = ...,
+    temp_folder: Annotated[
+        str, typer.Option(help="Folder for temporary anndata and scamp csv")
+    ] = "./temp",
+    cn_threshold: Annotated[
+        float, typer.Option(help='Threshold for copy number for visualizing ecDNA genes. Set to -1 to not use')
+    ] = 10,
+    cn_percentile_threshold: Annotated[
+        float, typer.Option(help='TThreshold for copy number percentile for visualization. Leave default to not use')
+    ] = 100
+
+) :
+
+    os.makedirs(temp_folder, exist_ok=True)
+    if mode == "anndata" :
+        #TODO: call vis.setup_anndata instead
+        setup_anndata(anndata_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold)
+    else :
+        setup_copynumber()    
+    os.system(f"cellxgene launch {temp_folder}/annotated_anndata.h5ad --gene-sets-file {temp_folder}/ecDNA_gene_set.csv --open")
+
+
+    
 
 @scamp_app.command(name="predict", help="Predict ecDNA status.")
 def predict_ecdna(
@@ -152,3 +186,93 @@ def predict_ecdna(
             )
 
         print(f"Output written out to {output_dir}.")
+
+
+
+###############################################
+import pandas as pd
+import anndata as ad
+import numpy as np
+
+# Get all the correct settings for visualization
+def setup_anndata(anndata_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold) :
+    
+    # Making gene set
+    scamp = pd.read_csv(scamp_tsv, sep = "\t")
+    gene_set_data = {
+        "gene_set_name": [],
+        "gene_set_description": [],
+        "gene_symbol": [],
+        "gene_description": []
+    }   
+    gene_set_df = pd.DataFrame(gene_set_data)
+
+    # get only ecDNA rows
+    for index, row in scamp.iterrows():
+        gene = row['gene']
+        if row['pred'] == True:
+            new_row = {"gene_set_name" : 'ecDNA', "gene_set_description" : "Predicted ecDNA by scAmp", "gene_symbol" : gene, "gene_description" : ""}
+            gene_set_df.loc[len(gene_set_df)] = new_row
+    
+    gene_set_df.to_csv(f"{temp_folder}/ecDNA_gene_set.csv", index = False)
+
+
+    # If we start with anndata
+    adata = ad.read_h5ad(anndata_file)
+
+    # cellxgene needs an embedding, make sure we have one
+    get_umap(adata, temp_folder)
+
+    # Add cell sets
+    for index, row in gene_set_df.iterrows():
+        gene = row['gene_symbol']
+        
+        counts = adata[:, gene].X
+        counts = counts.toarray().flatten()
+        percentile_thresh = np.percentile(counts, cn_percentile_threshold)
+        
+        adata.obs[f"~{gene}_ecDNA"] = (counts > cn_threshold) | (counts > percentile_thresh)
+
+
+    ecDNA_cols = [col for col in adata.obs.columns if col.endswith("_ecDNA")]
+    adata.obs["Number of ecDNA Positive Genes"] = adata.obs[ecDNA_cols].astype(int).sum(axis=1)
+    cols = ["Number of ecDNA Positive Genes"] + [c for c in adata.obs.columns if c != "Number of ecDNA Positive Genes"]
+    adata.obs = adata.obs[cols]
+
+    adata.write(f"{temp_folder}/annotated_anndata.h5ad")
+
+
+# Create a umap if one doesn't exist
+def get_umap(adata, temp_folder) :
+    if "X_umap" not in adata.obsm :
+        # Check for other umap
+        for key in list(adata.obsm.keys()):
+            if "umap" in key.lower():
+                print(f"Using {key} as umap...")
+                adata.obsm["X_umap"] = adata.obsm[key]
+                return
+
+        # Otherwise generate one
+        print("No X_umap Obsm Found - Creating X_umap...")
+        import scanpy as sc
+        sc.pp.neighbors(adata)
+        sc.tl.umap(adata)
+        adata.obsp.clear()
+        adata.varm.clear()
+
+        for key in list(adata.obsm.keys()):
+            if key not in ["X_umap"]:
+                del adata.obsm[key]
+
+        for key in list(adata.uns.keys()):
+            if key not in ["X_name"]:
+                del adata.uns[key]
+
+
+        print(f"Saving anndata with umap in {temp_folder}/umap_anndata.h5ad")
+        adata.write(f'{temp_folder}/umap_anndata.h5ad')
+
+
+# TODO: remove
+if __name__ == "__main__":
+    scamp_app()
