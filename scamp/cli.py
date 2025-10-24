@@ -128,7 +128,7 @@ def visualize(
 
     # If copy number, convert to anndata first
     if mode == "anndata" :
-        adata = vis.read_adata(adata)
+        adata = vis.read_adata(anndata_file)
         vis.setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold)
     else :
         vis.setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold) 
