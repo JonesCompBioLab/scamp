@@ -123,7 +123,7 @@ def visualize(
     ] = "./temp",
     cn_threshold: Annotated[
         float, typer.Option(help='Threshold for copy number for visualizing ecDNA genes. Set to -1 to not use')
-    ] = 10,
+    ] = 5,
     cn_percentile_threshold: Annotated[
         float, typer.Option(help='Threshold for copy number percentile for visualization. Leave default to not use')
     ] = 100
@@ -136,9 +136,9 @@ def visualize(
     # If copy number, convert to anndata first
     if mode == "anndata" :
         adata = vis.read_adata(anndata_file)
-        vis.setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name)
+        vis.setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_file)
     else :
-        vis.setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name) 
+        vis.setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_file) 
 
     # Run cellxgene   
     os.system(f"cellxgene launch {temp_folder}/annotated_anndata.h5ad --gene-sets-file {temp_folder}/ecDNA_gene_set.csv --open")

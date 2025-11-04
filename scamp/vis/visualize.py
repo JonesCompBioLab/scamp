@@ -3,14 +3,13 @@ import pandas as pd
 import anndata as ad
 import numpy as np
 
-#TODO: - if data also has gene expression matrix, pass that in as X - some assays get both, visualize with gene expression, but have copy numbers in obs
 #TODO: make it clear what's expression and what's copy number
 
 def read_adata(anndata_file) :
     return ad.read_h5ad(anndata_file)
 
 # Get all the correct settings for visualization
-def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name) :
+def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_data) :
     
     # Making gene set
     scamp = pd.read_csv(scamp_tsv, sep = "\t")
@@ -39,6 +38,19 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
     get_umap(umap_name, adata, temp_folder)
 
     # Add cell sets
+    add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold)
+
+    # Change to expression data if given
+    if expression_data != None :
+        print("Using expression data as X...")
+        exression_df = pd.read_csv(expression_data, sep='\t')
+        exression_df_subset = exression_df.loc[:, exression_df.columns.isin(adata.var_names)]
+        adata.X = exression_df_subset.values
+
+    adata.write(f"{temp_folder}/annotated_anndata.h5ad")
+
+def add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold):
+    # Add cell sets
     for index, row in gene_set_df.iterrows():
         gene = row['gene_symbol']
         
@@ -48,7 +60,6 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
         
         adata.obs[f"~{gene}_ecDNA"] = (counts > cn_threshold) | (counts > percentile_thresh)
 
-    
 
     ecDNA_cols = [col for col in adata.obs.columns if col.endswith("_ecDNA")]
     adata.obs["Number of ecDNA Positive Genes"] = adata.obs[ecDNA_cols].astype(int).sum(axis=1)
@@ -62,10 +73,8 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
         to_keep = adata.var_names.intersection(gene_list)
         adata = adata[:, to_keep].copy()
 
-    adata.write(f"{temp_folder}/annotated_anndata.h5ad")
 
-
-def setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name) :
+def setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_data) :
     # Create anndata from tsv
     counts_df = pd.read_csv(copy_numbers_file, sep='\t')
     var = pd.DataFrame({
@@ -77,7 +86,7 @@ def setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn
     adata.uns['X_name'] = 'GeneScoreMatrix'
 
     # Call rest of the pipeline
-    setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name)
+    setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_data)
 
 
 # Create a umap if one doesn't exist
