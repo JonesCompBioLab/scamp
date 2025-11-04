@@ -116,7 +116,7 @@ def visualize(
         str, typer.Option(help='Name of UMAP obsm in anndata')
     ] = "X_umap",
     expression_file: Annotated[
-        str, typer.Option(help="If you want to visualize with ")
+        str, typer.Option(help="To visualize with expression data instead of copy number. Provide a path to the expression data tsv")
     ] = None,
     temp_folder: Annotated[
         str, typer.Option(help="Folder for temporary anndata and scamp csv")

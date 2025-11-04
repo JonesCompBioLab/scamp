@@ -45,6 +45,10 @@ After running visualization once on a dataset, it will generate two files in you
 
 If you want to visualize the same dataset again, you can then just run `cellxgene launch [temp_folder]/annotated_anndata.h5ad --gene-sets-file [temp_folder]/ecDNA_gene_set.csv --open`
 
+By default, `scamp visualize` only uses copy number data, rather than gene expression. If you want to visualize with gene expression data instead, provide a file with `--expression-file`
+
+If your umap is not named "X_umap", provide the name to `--umap-name`. Otherwise, a umap will be created automatically and an anndata will be saved with the new umap in `[temp_folder]/umap_anndata.h5ad`
+
 ## Pretrained models
 
 Though you can train new models using scAmp, we also provide pre-trained models in the `./pretrained_models` directory.

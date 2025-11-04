@@ -3,8 +3,6 @@ import pandas as pd
 import anndata as ad
 import numpy as np
 
-#TODO: make it clear what's expression and what's copy number
-
 def read_adata(anndata_file) :
     return ad.read_h5ad(anndata_file)
 
