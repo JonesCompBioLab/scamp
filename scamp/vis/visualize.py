@@ -3,9 +3,8 @@ import pandas as pd
 import anndata as ad
 import numpy as np
 
-#TODO: only take in the scamp predicted genes for the copy numbers in obs - same data for X - if data also has gene expression matrix, pass that in as X - some assays get both, visualize with gene expression, but have copy numbers in obs
+#TODO: - if data also has gene expression matrix, pass that in as X - some assays get both, visualize with gene expression, but have copy numbers in obs
 #TODO: make it clear what's expression and what's copy number
-#TODO: scamp will have extra column for clustered genes, have signature for each cluster
 
 def read_adata(anndata_file) :
     return ad.read_h5ad(anndata_file)
@@ -27,12 +26,14 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
     for index, row in scamp.iterrows():
         gene = row['gene']
         if row['pred'] == True:
+            # When we have gene clusters from scamp, we can use this
+            # new_row = {"gene_set_name" : row["cluster"], "gene_set_description" : "Predicted ecDNA by scAmp", "gene_symbol" : gene, "gene_description" : ""}
+
             new_row = {"gene_set_name" : 'ecDNA', "gene_set_description" : "Predicted ecDNA by scAmp", "gene_symbol" : gene, "gene_description" : ""}
             gene_set_df.loc[len(gene_set_df)] = new_row
     
     gene_set_df.to_csv(f"{temp_folder}/ecDNA_gene_set.csv", index = False)
 
-    
 
     # cellxgene needs an embedding, make sure we have one
     get_umap(umap_name, adata, temp_folder)
@@ -47,11 +48,19 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
         
         adata.obs[f"~{gene}_ecDNA"] = (counts > cn_threshold) | (counts > percentile_thresh)
 
+    
 
     ecDNA_cols = [col for col in adata.obs.columns if col.endswith("_ecDNA")]
     adata.obs["Number of ecDNA Positive Genes"] = adata.obs[ecDNA_cols].astype(int).sum(axis=1)
     cols = ["Number of ecDNA Positive Genes"] + [c for c in adata.obs.columns if c != "Number of ecDNA Positive Genes"]
     adata.obs = adata.obs[cols]
+
+    # Get only gene list as obs
+    gene_list = gene_set_df['gene_symbol'].tolist()
+    if len(gene_list) > 0 :
+        print("Only leaving ecDNA postiive genes in var")
+        to_keep = adata.var_names.intersection(gene_list)
+        adata = adata[:, to_keep].copy()
 
     adata.write(f"{temp_folder}/annotated_anndata.h5ad")
 
