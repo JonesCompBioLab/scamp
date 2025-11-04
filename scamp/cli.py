@@ -112,6 +112,9 @@ def visualize(
     scamp_tsv: Annotated[
         str, typer.Option(help="Scamp Predict tsv")
     ] = ...,
+    umap_name: Annotated[
+        str, typer.Option(help='Name of UMAP obsm in anndata')
+    ] = "X_umap",
     temp_folder: Annotated[
         str, typer.Option(help="Folder for temporary anndata and scamp csv")
     ] = "./temp",
@@ -119,8 +122,9 @@ def visualize(
         float, typer.Option(help='Threshold for copy number for visualizing ecDNA genes. Set to -1 to not use')
     ] = 10,
     cn_percentile_threshold: Annotated[
-        float, typer.Option(help='TThreshold for copy number percentile for visualization. Leave default to not use')
+        float, typer.Option(help='Threshold for copy number percentile for visualization. Leave default to not use')
     ] = 100
+
 
 ) :
     # Where the files will go
@@ -129,9 +133,9 @@ def visualize(
     # If copy number, convert to anndata first
     if mode == "anndata" :
         adata = vis.read_adata(anndata_file)
-        vis.setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold)
+        vis.setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name)
     else :
-        vis.setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold) 
+        vis.setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name) 
 
     # Run cellxgene   
     os.system(f"cellxgene launch {temp_folder}/annotated_anndata.h5ad --gene-sets-file {temp_folder}/ecDNA_gene_set.csv --open")

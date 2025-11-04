@@ -3,11 +3,15 @@ import pandas as pd
 import anndata as ad
 import numpy as np
 
+#TODO: only take in the scamp predicted genes for the copy numbers in obs - same data for X - if data also has gene expression matrix, pass that in as X - some assays get both, visualize with gene expression, but have copy numbers in obs
+#TODO: make it clear what's expression and what's copy number
+#TODO: scamp will have extra column for clustered genes, have signature for each cluster
+
 def read_adata(anndata_file) :
     return ad.read_h5ad(anndata_file)
 
 # Get all the correct settings for visualization
-def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold) :
+def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name) :
     
     # Making gene set
     scamp = pd.read_csv(scamp_tsv, sep = "\t")
@@ -31,7 +35,7 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
     
 
     # cellxgene needs an embedding, make sure we have one
-    get_umap(adata, temp_folder)
+    get_umap(umap_name, adata, temp_folder)
 
     # Add cell sets
     for index, row in gene_set_df.iterrows():
@@ -52,7 +56,7 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
     adata.write(f"{temp_folder}/annotated_anndata.h5ad")
 
 
-def setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold) :
+def setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name) :
     # Create anndata from tsv
     counts_df = pd.read_csv(copy_numbers_file, sep='\t')
     var = pd.DataFrame({
@@ -64,36 +68,38 @@ def setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn
     adata.uns['X_name'] = 'GeneScoreMatrix'
 
     # Call rest of the pipeline
-    setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold)
+    setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name)
 
 
 # Create a umap if one doesn't exist
-def get_umap(adata, temp_folder) :
-    if "X_umap" not in adata.obsm :
-        # Check for other umap
-        for key in list(adata.obsm.keys()):
-            if "umap" in key.lower():
-                print(f"Using {key} as umap...")
-                adata.obsm["X_umap"] = adata.obsm[key]
-                return
-
-        # Otherwise generate one
-        print("No X_umap Obsm Found - Creating X_umap...")
-        import scanpy as sc
-        sc.pp.neighbors(adata)
-        sc.tl.umap(adata)
-        adata.obsp.clear()
-        adata.varm.clear()
-
-        # Clean up for cellxgene
-        for key in list(adata.obsm.keys()):
-            if key not in ["X_umap"]:
-                del adata.obsm[key]
-
-        for key in list(adata.uns.keys()):
-            if key not in ["X_name"]:
-                del adata.uns[key]
+def get_umap(umap_name, adata, temp_folder) :
+    # If we found existing umap
+    if umap_name in list(adata.obsm.keys()):
+        print(f"Found UMAP in {umap_name}...")
+        if (umap_name != "X_umap") :
+            print(f"Renaming UMAP to X_umap for cellxgene")
+            adata.obsm["X_umap"] = adata.obsm[umap_name]
+        return
 
 
-        print(f"Saving anndata with umap in {temp_folder}/umap_anndata.h5ad")
-        adata.write(f'{temp_folder}/umap_anndata.h5ad')
+    # Start with pca then run UMAP
+    print(f"No {umap_name} Obsm Found. - Creating UMAP in X_umap...")
+    import scanpy as sc
+    sc.tl.pca(adata, svd_solver='arpack')
+    sc.pp.neighbors(adata, use_rep='X_pca')
+    sc.tl.umap(adata)
+    adata.obsp.clear()
+    adata.varm.clear()
+
+    # Clean up for cellxgene
+    for key in list(adata.obsm.keys()):
+        if key not in ["X_umap"]:
+            del adata.obsm[key]
+
+    for key in list(adata.uns.keys()):
+        if key not in ["X_name"]:
+            del adata.uns[key]
+
+
+    print(f"Saving anndata with umap in {temp_folder}/umap_anndata.h5ad")
+    adata.write(f'{temp_folder}/umap_anndata.h5ad')
