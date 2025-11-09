@@ -7,7 +7,10 @@ def read_adata(anndata_file) :
     return ad.read_h5ad(anndata_file)
 
 # Get all the correct settings for visualization
-def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_data) :
+# Returns: None
+#          writes anndata to file [temp_folder]/annotated_anndata.h5ad
+#          writes gene set data to file [temp_folder]/ecDNA_gene_set.csv
+def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_adata) :
     
     # Making gene set
     scamp = pd.read_csv(scamp_tsv, sep = "\t")
@@ -31,22 +34,19 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
     
     gene_set_df.to_csv(f"{temp_folder}/ecDNA_gene_set.csv", index = False)
 
+    # Add cell sets
+    add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold)
+
+    # Convert visualization to expression data
+    adata.X = expression_adata.X.copy()
+    adata.obsm = expression_adata.obsm.copy()
 
     # cellxgene needs an embedding, make sure we have one
     get_umap(umap_name, adata, temp_folder)
 
-    # Add cell sets
-    add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold)
-
-    # Change to expression data if given
-    if expression_data != None :
-        print("Using expression data as X...")
-        exression_df = pd.read_csv(expression_data, sep='\t')
-        exression_df_subset = exression_df.loc[:, exression_df.columns.isin(adata.var_names)]
-        adata.X = exression_df_subset.values
-
     adata.write(f"{temp_folder}/annotated_anndata.h5ad")
 
+# Adds cell sets to anndata
 def add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold):
     # Add cell sets
     for index, row in gene_set_df.iterrows():
@@ -71,8 +71,17 @@ def add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold):
         to_keep = adata.var_names.intersection(gene_list)
         adata = adata[:, to_keep].copy()
 
+# Converts expression tsv data into anndata
+# Returns: expression anndata
+def setup_expression(expression_data, cn_adata) :
+    exression_df = pd.read_csv(expression_data, sep='\t')
+    exression_df_subset = exression_df.loc[:, exression_df.columns.isin(cn_adata.var_names)]
+    exp_adata = ad.AnnData(exression_df_subset)
+    return exp_adata
 
-def setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_data) :
+# Converts copy number tsv to anndata
+# Returns: copy number anndata
+def setup_copynumber(copy_numbers_file) :
     # Create anndata from tsv
     counts_df = pd.read_csv(copy_numbers_file, sep='\t')
     var = pd.DataFrame({
@@ -83,11 +92,12 @@ def setup_copynumber(copy_numbers_file, scamp_tsv, temp_folder, cn_threshold, cn
     adata = ad.AnnData(X=counts_df.values, obs=obs, var=var)
     adata.uns['X_name'] = 'GeneScoreMatrix'
 
-    # Call rest of the pipeline
-    setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_data)
-
+    return adata
 
 # Create a umap if one doesn't exist
+# Returns: None
+#          Edits input adata
+#          If new umap created, new anndata saved in {temp_folder}/umap_anndata.h5ad
 def get_umap(umap_name, adata, temp_folder) :
     # If we found existing umap
     if umap_name in list(adata.obsm.keys()):
