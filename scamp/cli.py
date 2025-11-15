@@ -27,7 +27,7 @@ CopyNumberRangesDirArg = Annotated[
                       "copy-number bins, if it's already computed.")
 ]
 CopyNumberFileArg = Annotated[
-    str, typer.Option(help="File path to tab-delimited file of copy numbers")
+    str, typer.Option(help="File path to tab or comma-delimited file of copy numbers")
 ]
 FragDirArg = Annotated[
     str,
@@ -104,7 +104,7 @@ def quantify_copy_numbers(
 
 @scamp_app.command(name="visualize", help="Visualize ecDNA results with cellxgene")
 def visualize(
-    copy_number_file: Annotated[
+    copy_numbers_file: Annotated[
         str, typer.Option(help="Path to copy number data")
     ] = ...,
     expression_file: Annotated[
@@ -132,11 +132,11 @@ def visualize(
     os.makedirs(temp_folder, exist_ok=True)
 
     # If copy number, convert to anndata first
-    copy_numbers_ext = copy_number_file.split('.')[-1]
+    copy_numbers_ext = copy_numbers_file.split('.')[-1]
     if copy_numbers_ext == "h5ad" :
-        cn_adata = vis.read_adata(copy_number_file)
+        cn_adata = vis.read_adata(copy_numbers_file)
     else :
-        cn_adata = vis.setup_copynumber(copy_number_file) 
+        cn_adata = vis.setup_copynumber(copy_numbers_file) 
     
     # Parse expression data
     expression_file_ext = expression_file.split('.')[-1]
@@ -193,16 +193,32 @@ def predict_ecdna(
             max_percentile,
             filter_copy_number
         )
+    else :
+        predictions  = predict.predict_ecdna_from_anndata(
+            anndata_file,
+            model_file,
+            decision_rule,
+            min_copy_number,
+            max_percentile,
+            filter_copy_number
+        )
 
-        os.makedirs(output_dir)
+    os.makedirs(output_dir)
 
-        predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
-        if not no_plot:
+    predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
+    if not no_plot:
+        if mode == "copynumber" :
             plotting.plot_scamp_predictions_plotly(
                 predictions,
                 f"{output_dir}/ecDNA_predictions.html",
                 title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
             )
+        else :
+            plotting.plot_scamp_predictions_plotly(
+                predictions,
+                f"{output_dir}/ecDNA_predictions.html",
+                title=f"scAmp predictions for {anndata_file.split('/')[-1]}"
+            )
 
-        print(f"Output written out to {output_dir}.")
+    print(f"Output written out to {output_dir}.")
 

@@ -12,6 +12,24 @@ from scamp import models
 from scamp.predict import utilities
 
 
+def predict_ecdna_from_anndata(
+    anndata_file,
+    saved_model_directory,
+    decision_rule,
+    min_copy_number,
+    max_percentile,
+    filter_copy_number,
+):
+    counts_df = io.read_anndata_file(anndata_file)
+    return predict(counts_df,
+    saved_model_directory,
+    decision_rule,
+    min_copy_number,
+    max_percentile,
+    filter_copy_number)
+
+
+
 def predict_ecdna_from_copy_number(
     counts_file,
     saved_model_directory,
@@ -22,6 +40,22 @@ def predict_ecdna_from_copy_number(
 ):
 
     counts_df = io.read_copy_numbers_file(counts_file)
+    return predict(counts_df,
+    saved_model_directory,
+    decision_rule,
+    min_copy_number,
+    max_percentile,
+    filter_copy_number)
+
+
+def predict(
+    counts_df,
+    saved_model_directory,
+    decision_rule,
+    min_copy_number,
+    max_percentile,
+    filter_copy_number,
+) :
     model = models.SCAMP.load(saved_model_directory)
 
     X, genes_pass_filter = model.prepare_copy_numbers(
