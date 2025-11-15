@@ -39,6 +39,7 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
 
     # Convert visualization to expression data
     adata.X = expression_adata.X.copy()
+    adata.X = np.log1p(adata.X)
     adata.obsm = expression_adata.obsm.copy()
 
     # cellxgene needs an embedding, make sure we have one
@@ -48,24 +49,30 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
 
 # Adds cell sets to anndata
 def add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold):
-    # Add cell sets
-    for index, row in gene_set_df.iterrows():
-        gene = row['gene_symbol']
-        
-        counts = adata[:, gene].X
-        counts = counts.toarray().flatten()
-        percentile_thresh = np.percentile(counts, cn_percentile_threshold)
-        
-        adata.obs[f"~{gene}_ecDNA"] = (counts > cn_threshold) | (counts > percentile_thresh)
+    # Get list of genes
+    gene_list = gene_set_df['gene_symbol'].tolist()
+
+    # Only get ecDNA genes
+    X_ecDNA = adata[:, gene_list].X
+    X_ecDNA = X_ecDNA.toarray() if not isinstance(X_ecDNA, np.ndarray) else X_ecDNA
+
+    # Get number of ecDNA positive genes
+    percentile_thresholds = np.percentile(X_ecDNA, cn_percentile_threshold, axis=0)
+    ecDNA_bool = (X_ecDNA > cn_threshold) | (X_ecDNA > percentile_thresholds)
+    adata.obs["Number of ecDNA Positive Genes"] = ecDNA_bool.sum(axis=1)
+
+    # Convert to log for the obs
+    logX = np.log1p(X_ecDNA)
+
+    for i, gene in enumerate(gene_list):
+        adata.obs[f"{gene}_ecDNA"] = logX[:, i]
+        # Ensure it goes to top of visualization
+        adata.obs = adata.obs[[f"{gene}_ecDNA"] + [c for c in adata.obs.columns if c != f"{gene}_ecDNA"]]
+    adata.obs = adata.obs[["Number of ecDNA Positive Genes"] + [c for c in adata.obs.columns if c != "Number of ecDNA Positive Genes"]]
 
 
-    ecDNA_cols = [col for col in adata.obs.columns if col.endswith("_ecDNA")]
-    adata.obs["Number of ecDNA Positive Genes"] = adata.obs[ecDNA_cols].astype(int).sum(axis=1)
-    cols = ["Number of ecDNA Positive Genes"] + [c for c in adata.obs.columns if c != "Number of ecDNA Positive Genes"]
-    adata.obs = adata.obs[cols]
 
     # Get only gene list as obs
-    gene_list = gene_set_df['gene_symbol'].tolist()
     if len(gene_list) > 0 :
         print("Only leaving ecDNA postiive genes in var")
         to_keep = adata.var_names.intersection(gene_list)
@@ -74,16 +81,37 @@ def add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold):
 # Converts expression tsv data into anndata
 # Returns: expression anndata
 def setup_expression(expression_data, cn_adata) :
-    exression_df = pd.read_csv(expression_data, sep='\t')
+    # Detect file extension
+    expression_file_ext = expression_data.split('.')[-1]
+    if expression_file_ext == "csv" :
+        sep = ','
+    elif expression_file_ext == "tsv" :
+        sep = '\t'
+    else :
+        print(f"Unknown file type for {expression_data}... treating as csv")
+        sep = ','
+    
+    # Read dataframe
+    exression_df = pd.read_csv(expression_data, sep=sep)
     exression_df_subset = exression_df.loc[:, exression_df.columns.isin(cn_adata.var_names)]
     exp_adata = ad.AnnData(exression_df_subset)
     return exp_adata
 
 # Converts copy number tsv to anndata
 # Returns: copy number anndata
-def setup_copynumber(copy_numbers_file) :
+def setup_copynumber(copy_number_file) :
+    # Detect file extension
+    copy_number_file_ext = copy_number_file.split('.')[-1]
+    if copy_number_file_ext == "csv" :
+        sep = ','
+    elif copy_number_file_ext == "tsv" :
+        sep = '\t'
+    else :
+        print(f"Unknown file type for {copy_number_file}... treating as csv")
+        sep = ','
+
     # Create anndata from tsv
-    counts_df = pd.read_csv(copy_numbers_file, sep='\t')
+    counts_df = pd.read_csv(copy_number_file, sep=sep)
     var = pd.DataFrame({
         'idx': range(1, counts_df.shape[1] + 1)
     }, index=counts_df.columns)

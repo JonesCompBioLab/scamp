@@ -104,20 +104,12 @@ def quantify_copy_numbers(
 
 @scamp_app.command(name="visualize", help="Visualize ecDNA results with cellxgene")
 def visualize(
-    copy_numbers_file: CopyNumberFileArg = None,
-    copy_numbers_file_anndata: AnnDataFileArg = None,
-    copy_numbers_mode: Annotated[
-        str, typer.Option(help="Mode: anndata copynumber")
-    ] = "copynumber",
+    copy_number_file: Annotated[
+        str, typer.Option(help="Path to copy number data")
+    ] = ...,
     expression_file: Annotated[
         str, typer.Option(help="Path to the expression data")
-    ] = None,
-    expression_file_anndata: Annotated[
-        str, typer.Option(help="Path to the anndata expression data")
-    ] = None,
-    expression_mode: Annotated[
-        str, typer.Option(help="Mode: anndata copynumber")
-    ] = "copynumber",
+    ] = ...,
     scamp_tsv: Annotated[
         str, typer.Option(help="Scamp Predict tsv")
     ] = ...,
@@ -136,25 +128,20 @@ def visualize(
 
 
 ) :
-    
-    # Automatically detect mode
-    if copy_numbers_file == None and copy_numbers_file_anndata != None :
-        copy_numbers_mode = "anndata" 
-    if expression_file == None and expression_file_anndata != None :
-        expression_mode = "anndata" 
-
     # Where the files will go
     os.makedirs(temp_folder, exist_ok=True)
 
     # If copy number, convert to anndata first
-    if copy_numbers_mode == "anndata" :
-        cn_adata = vis.read_adata(copy_numbers_file_anndata)
+    copy_numbers_ext = copy_number_file.split('.')[-1]
+    if copy_numbers_ext == "h5ad" :
+        cn_adata = vis.read_adata(copy_number_file)
     else :
-        cn_adata = vis.setup_copynumber(copy_numbers_file) 
+        cn_adata = vis.setup_copynumber(copy_number_file) 
     
     # Parse expression data
-    if expression_mode == "anndata" :
-        exp_adata = vis.read_adata(expression_file_anndata)
+    expression_file_ext = expression_file.split('.')[-1]
+    if expression_file_ext == "h5ad" :
+        exp_adata = vis.read_adata(expression_file)
     else :
         exp_adata = vis.setup_expression(expression_file, cn_adata)
 
