@@ -6,6 +6,7 @@ distributions.
 import numpy as np
 import pandas as pd
 import torch
+import scanpy as sc
 
 from scamp import io
 from scamp import models
@@ -21,6 +22,24 @@ def predict_ecdna_from_anndata(
     filter_copy_number,
 ):
     counts_df = io.read_anndata_file(anndata_file)
+    return predict(counts_df,
+    saved_model_directory,
+    decision_rule,
+    min_copy_number,
+    max_percentile,
+    filter_copy_number)
+
+
+def predict_ecdna_from_mex(
+    mex_folder,
+    saved_model_directory,
+    decision_rule,
+    min_copy_number,
+    max_percentile,
+    filter_copy_number,
+):
+    counts_df = io.read_mex_file(mex_folder)
+
     return predict(counts_df,
     saved_model_directory,
     decision_rule,
