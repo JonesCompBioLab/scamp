@@ -26,11 +26,14 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
     for index, row in scamp.iterrows():
         gene = row['gene']
         if row['pred'] == True:
-            # When we have gene clusters from scamp, we can use this
-            # new_row = {"gene_set_name" : row["cluster"], "gene_set_description" : "Predicted ecDNA by scAmp", "gene_symbol" : gene, "gene_description" : ""}
-
-            new_row = {"gene_set_name" : 'ecDNA', "gene_set_description" : "Predicted ecDNA by scAmp", "gene_symbol" : gene, "gene_description" : ""}
+            new_row = {"gene_set_name" : f"All ecDNA Genes", "gene_set_description" : f"Predicted ecDNA by scAmp", "gene_symbol" : gene, "gene_description" : ""}
             gene_set_df.loc[len(gene_set_df)] = new_row
+
+            # gene clusters
+            if "cluster" in row :
+                new_row = {"gene_set_name" : f"ecDNA Cluster {row["cluster"]}", "gene_set_description" : f"Predicted ecDNA by scAmp, cluster {row["cluster"]}", "gene_symbol" : gene, "gene_description" : ""}
+                gene_set_df.loc[len(gene_set_df)] = new_row
+        
     
     gene_set_df.to_csv(f"{temp_folder}/ecDNA_gene_set.csv", index = False)
 

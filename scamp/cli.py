@@ -182,7 +182,10 @@ def predict_ecdna(
     ] = 2.5,
     no_plot: Annotated[
         float, typer.Option(help="Suppress plotting functionality.")
-    ] = False
+    ] = False,
+    cluster_distance_threshold: Annotated[
+        float, typer.Option(help="Distance threshold for hierarchical clustering.")
+    ] = 0.4
 ) -> None:
 
     # Detect extension
@@ -202,7 +205,8 @@ def predict_ecdna(
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number
+            filter_copy_number,
+            cluster_distance_threshold
         )
     elif mode == "MEX" :
         predictions = predict.predict_ecdna_from_mex(
@@ -211,7 +215,8 @@ def predict_ecdna(
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number
+            filter_copy_number,
+            cluster_distance_threshold
         )
     else :
         predictions  = predict.predict_ecdna_from_anndata(
@@ -220,7 +225,8 @@ def predict_ecdna(
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number
+            filter_copy_number,
+            cluster_distance_threshold
         )
 
     os.makedirs(output_dir)
