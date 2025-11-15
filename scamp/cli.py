@@ -4,6 +4,9 @@ Command-line tools for scAmp.
 
 from __future__ import annotations
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 import os
 import pathlib
 import pickle
@@ -28,7 +31,7 @@ CopyNumberRangesDirArg = Annotated[
                       "copy-number bins, if it's already computed.")
 ]
 CopyNumberFileArg = Annotated[
-    str, typer.Option(help="File path to anndata, tab/comma-delimited file, or MEX folder of copy number data")
+    str, typer.Argument(help="File path to anndata, tab/comma-delimited file, or MEX folder of copy number data")
 ]
 FragDirArg = Annotated[
     str,
@@ -106,14 +109,14 @@ def quantify_copy_numbers(
 @scamp_app.command(name="visualize", help="Visualize ecDNA results with cellxgene")
 def visualize(
     copy_numbers_file: Annotated[
-        str, typer.Option(help="Path to copy number data or copy number MEX folder")
-    ] = ...,
+        str, typer.Argument(help="Path to copy number data or copy number MEX folder")
+    ],
     expression_file: Annotated[
-        str, typer.Option(help="Path to the expression data or expression MEX folder")
-    ] = ...,
+        str, typer.Argument(help="Path to the expression data or expression MEX folder")
+    ],
     scamp_tsv: Annotated[
-        str, typer.Option(help="Scamp Predict tsv")
-    ] = ...,
+        str, typer.Argument(help="Scamp Predict tsv")
+    ],
     umap_name: Annotated[
         str, typer.Option(help='Name of UMAP obsm in expression anndata')
     ] = "X_umap",
@@ -132,8 +135,9 @@ def visualize(
     # Where the files will go
     os.makedirs(temp_folder, exist_ok=True)
 
-    # MEX format
+    # Parse copy number data
     if os.path.isdir(copy_numbers_file) :
+        # MEX format
         cn_adata = sc.read_10x_mtx(copy_numbers_file)
     else :
         # If copy number, convert to anndata first
@@ -145,6 +149,7 @@ def visualize(
     
     # Parse expression data
     if os.path.isdir(expression_file) :
+        # MEX format
         exp_adata = sc.read_10x_mtx(exp_adata)
     else :
         expression_file_ext = expression_file.split('.')[-1]
@@ -156,7 +161,6 @@ def visualize(
     # Get full anndata
     vis.setup_anndata(cn_adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, exp_adata)
 
-
     # Run cellxgene   
     os.system(f"cellxgene launch {temp_folder}/annotated_anndata.h5ad --gene-sets-file {temp_folder}/ecDNA_gene_set.csv --open")
 
@@ -167,7 +171,7 @@ def visualize(
 def predict_ecdna(
     output_dir: OutputDirArg,
     model_file: ModelDirArg,
-    copy_numbers_file: CopyNumberFileArg = ...,
+    copy_numbers_file: CopyNumberFileArg,
     decision_rule: Annotated[
         float, typer.Option(help="Likelihood decision rule.")
     ] = 0.5,
@@ -198,6 +202,7 @@ def predict_ecdna(
         else :
             mode = "copynumber"
 
+    # Call different wrapper for each prediction type
     if mode == "copynumber":
         predictions = predict.predict_ecdna_from_copy_number(
             copy_numbers_file,
@@ -231,6 +236,7 @@ def predict_ecdna(
 
     os.makedirs(output_dir)
 
+    # Output predictions and visualizations
     predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
     if not no_plot:
         plotting.plot_scamp_predictions_plotly(

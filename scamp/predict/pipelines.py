@@ -3,6 +3,9 @@ A pipeline for predicting ecDNA status from single-cell copy-number
 distributions.
 """
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 import numpy as np
 import pandas as pd
 import torch
@@ -13,7 +16,6 @@ from scamp import models
 from scamp.predict import utilities
 from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, fcluster
-
 
 
 def predict_ecdna_from_anndata(

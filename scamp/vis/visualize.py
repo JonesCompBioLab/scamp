@@ -1,4 +1,7 @@
 ###############################################
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 import pandas as pd
 import anndata as ad
 import numpy as np
@@ -51,6 +54,7 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
     adata.write(f"{temp_folder}/annotated_anndata.h5ad")
 
 # Adds cell sets to anndata
+# Returns: None, modifies adata
 def add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold):
     # Get list of genes
     gene_list = gene_set_df['gene_symbol'].tolist()
@@ -73,13 +77,12 @@ def add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold):
         adata.obs = adata.obs[[f"{gene}_ecDNA"] + [c for c in adata.obs.columns if c != f"{gene}_ecDNA"]]
     adata.obs = adata.obs[["Number of ecDNA Positive Genes"] + [c for c in adata.obs.columns if c != "Number of ecDNA Positive Genes"]]
 
-
-
     # Get only gene list as obs
     if len(gene_list) > 0 :
         print("Only leaving ecDNA postiive genes in var")
         to_keep = adata.var_names.intersection(gene_list)
         adata = adata[:, to_keep].copy()
+
 
 # Converts expression tsv data into anndata
 # Returns: expression anndata
