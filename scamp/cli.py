@@ -4,10 +4,14 @@ Command-line tools for scAmp.
 
 from __future__ import annotations
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 import os
 import pathlib
 import pickle
 from typing import Annotated, Union
+import scanpy as sc
 
 import typer
 
@@ -15,6 +19,7 @@ from scamp import io
 from scamp.mixins import CLIError
 from scamp import predict
 from scamp import plotting
+from scamp import vis
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
@@ -26,7 +31,7 @@ CopyNumberRangesDirArg = Annotated[
                       "copy-number bins, if it's already computed.")
 ]
 CopyNumberFileArg = Annotated[
-    str, typer.Option(help="File path to tab-delimited file of copy numbers")
+    str, typer.Argument(help="File path to anndata, tab/comma-delimited file, or MEX folder of copy number data")
 ]
 FragDirArg = Annotated[
     str,
@@ -101,16 +106,72 @@ def quantify_copy_numbers(
         f"{copy_number_directory} {output_directory} {reference_genome_name}"
     )
 
+@scamp_app.command(name="visualize", help="Visualize ecDNA results with cellxgene")
+def visualize(
+    copy_numbers_file: Annotated[
+        str, typer.Argument(help="Path to copy number data or copy number MEX folder")
+    ],
+    expression_file: Annotated[
+        str, typer.Argument(help="Path to the expression data or expression MEX folder")
+    ],
+    scamp_tsv: Annotated[
+        str, typer.Argument(help="Scamp Predict tsv")
+    ],
+    umap_name: Annotated[
+        str, typer.Option(help='Name of UMAP obsm in expression anndata')
+    ] = "X_umap",
+    temp_folder: Annotated[
+        str, typer.Option(help="Folder for temporary anndata and scamp csv")
+    ] = "./temp",
+    cn_threshold: Annotated[
+        float, typer.Option(help='Threshold for copy number for visualizing ecDNA genes. Set to -1 to not use')
+    ] = 5,
+    cn_percentile_threshold: Annotated[
+        float, typer.Option(help='Threshold for copy number percentile for visualization. Leave default to not use')
+    ] = 100
+
+
+) :
+    # Where the files will go
+    os.makedirs(temp_folder, exist_ok=True)
+
+    # Parse copy number data
+    if os.path.isdir(copy_numbers_file) :
+        # MEX format
+        cn_adata = sc.read_10x_mtx(copy_numbers_file)
+    else :
+        # If copy number, convert to anndata first
+        copy_numbers_ext = copy_numbers_file.split('.')[-1]
+        if copy_numbers_ext == "h5ad" :
+            cn_adata = vis.read_adata(copy_numbers_file)
+        else :
+            cn_adata = vis.setup_copynumber(copy_numbers_file) 
+    
+    # Parse expression data
+    if os.path.isdir(expression_file) :
+        # MEX format
+        exp_adata = sc.read_10x_mtx(exp_adata)
+    else :
+        expression_file_ext = expression_file.split('.')[-1]
+        if expression_file_ext == "h5ad" :
+            exp_adata = vis.read_adata(expression_file)
+        else :
+            exp_adata = vis.setup_expression(expression_file, cn_adata)
+
+    # Get full anndata
+    vis.setup_anndata(cn_adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, exp_adata)
+
+    # Run cellxgene   
+    os.system(f"cellxgene launch {temp_folder}/annotated_anndata.h5ad --gene-sets-file {temp_folder}/ecDNA_gene_set.csv --open")
+
+
+    
 
 @scamp_app.command(name="predict", help="Predict ecDNA status.")
 def predict_ecdna(
     output_dir: OutputDirArg,
     model_file: ModelDirArg,
-    copy_numbers_file: CopyNumberFileArg = None,
-    anndata_file: AnnDataFileArg = None,
-    mode: Annotated[
-        str, typer.Option(help="Mode: (currently only offering `copynumber`)")
-    ] = "copynumber",
+    copy_numbers_file: CopyNumberFileArg,
     decision_rule: Annotated[
         float, typer.Option(help="Likelihood decision rule.")
     ] = 0.5,
@@ -125,12 +186,23 @@ def predict_ecdna(
     ] = 2.5,
     no_plot: Annotated[
         float, typer.Option(help="Suppress plotting functionality.")
-    ] = False
+    ] = False,
+    cluster_distance_threshold: Annotated[
+        float, typer.Option(help="Distance threshold for hierarchical clustering.")
+    ] = 0.4
 ) -> None:
 
-    if (copy_numbers_file is None) and (anndata_file is None):
-        raise CLIError("Specify one of copy numbers file anndata file.")
+    # Detect extension
+    if os.path.isdir(copy_numbers_file) :
+        mode = "MEX"
+    else :
+        copy_numbers_ext = copy_numbers_file.split('.')[-1]
+        if copy_numbers_ext == "h5ad" :
+            mode = "anndata"
+        else :
+            mode = "copynumber"
 
+    # Call different wrapper for each prediction type
     if mode == "copynumber":
         predictions = predict.predict_ecdna_from_copy_number(
             copy_numbers_file,
@@ -138,17 +210,41 @@ def predict_ecdna(
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number
+            filter_copy_number,
+            cluster_distance_threshold
+        )
+    elif mode == "MEX" :
+        predictions = predict.predict_ecdna_from_mex(
+            copy_numbers_file,
+            model_file,
+            decision_rule,
+            min_copy_number,
+            max_percentile,
+            filter_copy_number,
+            cluster_distance_threshold
+        )
+    else :
+        predictions  = predict.predict_ecdna_from_anndata(
+            copy_numbers_file,
+            model_file,
+            decision_rule,
+            min_copy_number,
+            max_percentile,
+            filter_copy_number,
+            cluster_distance_threshold
         )
 
-        os.makedirs(output_dir)
+    os.makedirs(output_dir)
 
-        predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
-        if not no_plot:
-            plotting.plot_scamp_predictions_plotly(
-                predictions,
-                f"{output_dir}/ecDNA_predictions.html",
-                title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
-            )
+    # Output predictions and visualizations
+    predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
+    if not no_plot:
+        plotting.plot_scamp_predictions_plotly(
+            predictions,
+            f"{output_dir}/ecDNA_predictions.html",
+            title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
+        )
 
-        print(f"Output written out to {output_dir}.")
+
+    print(f"Output written out to {output_dir}.")
+
