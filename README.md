@@ -38,18 +38,18 @@ You can look at usage instructions for these modules by running `scamp [module] 
 
 ## Visualization
 
+Necessary inputs are scamp predict results, expression data, and copy number data. 
+
+Supported data types for expression and copy number data are cellranger MEX, anndata, csv, and tsv. To use MEX, please give a folder as an argument. To use csv or tsv, please give a file with the extension `.tsv` or `.csv`. To use anndata, ensure the file has the extension `.h5ad`.
+
+If your umap is not named "X_umap", provide the name to `--umap-name`. Otherwise, a umap will be created automatically and an anndata will be saved with the new umap in `[temp_folder]/umap_anndata.h5ad`
+
 After running visualization once on a dataset, it will generate two files in your specified temp folder:
 
 * `annotated_anndata.h5ad`: Anndata with ecDNA cell set annotations
 * `ecDNA_gene_set.csv`: Gene sets for ecDNA
 
 If you want to visualize the same dataset again, you can then just run `cellxgene launch [temp_folder]/annotated_anndata.h5ad --gene-sets-file [temp_folder]/ecDNA_gene_set.csv --open`
-
-Necessary inputs are scamp predict results, expression data, and copy number data. 
-
-Supported data types for expression and copy number data are cellranger MEX, anndata, csv, and tsv. To use MEX, please give a folder as an argument. To use csv or tsv, please give a file with the extension `.tsv` or `.csv`. To use anndata, ensure the file has the extension `.h5ad`.
-
-If your umap is not named "X_umap", provide the name to `--umap-name`. Otherwise, a umap will be created automatically and an anndata will be saved with the new umap in `[temp_folder]/umap_anndata.h5ad`
 
 ## Pretrained models
 
