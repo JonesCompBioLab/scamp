@@ -108,6 +108,7 @@ def predict_ecdna(
     model_file: ModelDirArg,
     copy_numbers_file: CopyNumberFileArg = None,
     anndata_file: AnnDataFileArg = None,
+    whitelist_file: WhitelistFileArg = None,
     mode: Annotated[
         str, typer.Option(help="Mode: (currently only offering `copynumber`)")
     ] = "copynumber",
@@ -138,7 +139,8 @@ def predict_ecdna(
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number
+            filter_copy_number,
+            whitelist_file
         )
 
         os.makedirs(output_dir)

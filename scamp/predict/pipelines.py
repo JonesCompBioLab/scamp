@@ -19,10 +19,16 @@ def predict_ecdna_from_copy_number(
     min_copy_number,
     max_percentile,
     filter_copy_number,
+    whitelist_file
 ):
 
     counts_df = io.read_copy_numbers_file(counts_file)
     model = models.SCAMP.load(saved_model_directory)
+
+    # subset by whitelist
+    if whitelist_file:
+        whitelist = pd.read_csv(whitelist_file, header=None).iloc[:,0].values
+        counts_df = counts_df.loc[np.intersect1d(counts_df.index, whitelist)]
 
     X, genes_pass_filter = model.prepare_copy_numbers(
         counts_df.to_numpy(),
