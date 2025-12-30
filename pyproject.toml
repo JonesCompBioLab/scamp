@@ -56,6 +56,15 @@ dev = ["scamp[editing,tests]"]
 test = ["scamp[tests]"]
 cuda = ["torchvision","torchaudio"]
 
+# Optional CNV dependencies for the Python-native pipeline
+cnv = [
+    "BioPython",
+    "pyfaidx",
+    "pyranges",
+    "pysam",
+    "statsmodels",
+]
+
 docs = [
     "docutils>=0.8,!=0.18.*,!=0.19.*",
     "sphinx>=4.1",
@@ -80,7 +89,7 @@ tutorials = [
     "jupyter",
 ]
 
-all = ["scamp[cuda,dev,docs,optional,tutorials]"]
+all = ["scamp[cuda,dev,docs,optional,tutorials,cnv]"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "scripts" = "scamp/scripts"

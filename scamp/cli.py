@@ -15,6 +15,7 @@ from scamp import io
 from scamp.mixins import CLIError
 from scamp import predict
 from scamp import plotting
+from scamp import cnv
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
@@ -64,42 +65,44 @@ def quantify_copy_numbers(
         str,
         typer.Option(help="Reference genome name, to pair with a blacklist."),
     ] = "hg38",
+    reference_fasta: Annotated[
+        str, typer.Option(help="Path to reference fasta file (required for Python-native mode)")
+    ] = "reference.fa",
+    gene_annotation: Annotated[
+        str, typer.Option(help="Path to gene annotation BED/GTF used for aggregation (required for Python-native mode)")
+    ] = None,
+    quiet: Annotated[
+        bool, typer.Option(help="Suppress progress output")
+    ] = False,
+    use_pysam: Annotated[
+        bool, typer.Option(help="Use pysam for faster chromosome loading (if available)")
+    ] = True,
 ):
-
-    binned_copy_number_script = (
-        f"{os.path.dirname(__file__)}/scripts/scATAC_CNV.R"
-    )
-    gene_aggregation_script = (
-        f"{os.path.dirname(__file__)}/scripts/aggregate_gene_copy_number.R"
-    )
-
-    # compute copy-numbers in genomic windows
-    if fragment_directory:
-        
-        if whitelist_file is None:
-            raise CLIError("If starting the copy-number pipeline from the " 
-                            "beginning, please provide a whitelist fiel")
-        print(
-            f"Binning copy-numbers from {fragment_directory} in windows "
-            f"of size {window_size}..."
-        )
-        os.system(
-            f"Rscript {binned_copy_number_script} "
-            f"{fragment_directory} {window_size} "
-            f"{step_size} {n_neighbors} "
-            f"{whitelist_file} {output_directory} "
-            f"{reference_genome_name} {os.path.dirname(__file__)}"
-        )
 
     # bin by gene
     if not copy_number_directory:
         copy_number_directory = output_directory
 
-    print(f"Aggregating together copy-numbers across genes...")
-    os.system(
-        f"Rscript {gene_aggregation_script} "
-        f"{copy_number_directory} {output_directory} {reference_genome_name}"
-    )
+    if not reference_fasta:
+        raise CLIError("`reference_fasta` is required for Python-native mode")
+    if gene_annotation is None:
+        raise CLIError("`gene_annotation` is required for Python-native mode")
+    
+    try:
+        file_output = cnv.run_python_pipeline(
+            fragment_directory,
+            output_directory,
+            reference_fasta,
+            gene_annotation,
+            window_size=window_size,
+            step_size=step_size,
+            n_neighbors=n_neighbors,
+            quiet=quiet,
+            use_pysam=use_pysam,
+        )
+        print(f"Aggregated CNAs wrote {len(file_output)} files.")
+    except Exception as exc:
+        raise CLIError(f"Error while running Python-native CNV pipeline: {exc}")
 
 
 @scamp_app.command(name="predict", help="Predict ecDNA status.")
