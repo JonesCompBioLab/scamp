@@ -20,7 +20,7 @@ def read_copy_numbers_file(filename, n_threads: int = None):
             of your system are used.
     """
 
-    counts_df = pd.read_csv(filename, sep='\t')
+    counts_df = pd.read_csv(filename, sep='\t', index_col=0)
 
     return counts_df
 
