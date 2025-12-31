@@ -22,7 +22,9 @@ scAmp's ATAC CNV module was tested with R version 4.3.2 (and should work with la
 
 ## Running scAmp from the command line
 
-You can invoke `scamp` modules from the command line by running
+For a basic tutorial of the `scamp` classification pipeline, you can find an example [here](notebooks/intro_to_scamp.ipynb).
+
+You can also invoke `scamp` modules from the command line by running
 
 `scamp [module] [arguments]`
 
