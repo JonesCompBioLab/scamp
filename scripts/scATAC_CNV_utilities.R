@@ -76,7 +76,7 @@ fragFiles2cnaObj <- function(frag_files,
                              force = TRUE,
                              remove = c("chrM","chrX","chrY"),
                              convertArrowFile = FALSE,
-                             addRG = TRUE,
+                             addRG = FALSE,
                              max_granges_length = 4e+7){
     
     for (sample_name in names(frag_files)) {
