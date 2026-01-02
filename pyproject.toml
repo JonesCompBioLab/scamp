@@ -35,6 +35,7 @@ dependencies = [
     "anndata>=0.11",
     "numpy",
     "pandas",
+    "plotly",
     "rich>=12.0.0",
     "scikit-learn>=0.21.2",
     "scipy",
@@ -42,6 +43,7 @@ dependencies = [
     "torch",
     "torchmetrics>=0.11.0",
     "tqdm",
+    "typer",
     "xarray>=2023.2.0",
 ]
 

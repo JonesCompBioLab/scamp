@@ -14,7 +14,7 @@ You can install scAmp by cloning this directory and running `pip install .` This
 
 In addition, if you'd like to use the ATAC CNV module, you should install the following R packages:
 
-* [ArchR](https://github.com/GreenleafLab/ArchR)
+* Rutils
 * SummarizedExperiment
 * dplyr
 

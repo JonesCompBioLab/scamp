@@ -1,4 +1,4 @@
-suppressMessages(library(ArchR, quietly=T))
+# suppressMessages(library(ArchR, quietly=T))
 
 # ------------ UTILITIES ------------- #
 average_windows_containing_region <- function(cna_data, query_gr, copy_number_array) {
@@ -19,15 +19,22 @@ args <- commandArgs(trailingOnly=TRUE)
 CNA_DIR <- args[[1]]
 OUTPUT_DIR <- args[[2]]
 REFERENCE <- args[[3]]
+ROOT_DIR <- args[[4]]
 
 # ------------- PIPELINE -------------- #
 
 if (REFERENCE == 'hg19') {
-    gene_ranges <- geneAnnoHg19$genes
+    gene_ranges <- readRDS(paste0(
+        ROOT_DIR, "/reference/geneAnnoHg19.rds")
+    )$genes
 } else if (REFERENCE == 'hg38') {
-    gene_ranges <- geneAnnoHg38$genes
+   gene_ranges <- readRDS(paste0(
+        ROOT_DIR, "/reference/geneAnnoHg38.rds")
+    )$genes
 } else if (REFERENCE == 'mm10') {
-    gene_ranges <- geneAnnoMm10$genes
+    gene_ranges <- readRDS(paste0(
+        ROOT_DIR, "/reference/geneAnnoMm10.rds")
+    )$genes
 } else {
     stop('Choose one of the following referenge genomes: `hg38`, `hg19`, `mm10`')
 }

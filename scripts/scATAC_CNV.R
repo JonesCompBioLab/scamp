@@ -4,6 +4,7 @@ suppressMessages(library(grid))
 suppressMessages(library(dplyr))
 suppressMessages(library(data.table))
 suppressMessages(library(SummarizedExperiment))
+suppressMessages(library(R.utils))
 set.seed(1)
 
 "%ni%" <- Negate("%in%")

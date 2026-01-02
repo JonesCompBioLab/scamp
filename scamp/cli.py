@@ -78,7 +78,7 @@ def quantify_copy_numbers(
         
         if whitelist_file is None:
             raise CLIError("If starting the copy-number pipeline from the " 
-                            "beginning, please provide a whitelist fiel")
+                            "beginning, please provide a whitelist file")
         print(
             f"Binning copy-numbers from {fragment_directory} in windows "
             f"of size {window_size}..."
@@ -98,7 +98,7 @@ def quantify_copy_numbers(
     print(f"Aggregating together copy-numbers across genes...")
     os.system(
         f"Rscript {gene_aggregation_script} "
-        f"{copy_number_directory} {output_directory} {reference_genome_name}"
+        f"{copy_number_directory} {output_directory} {reference_genome_name} {os.path.dirname(__file__)}"
     )
 
 
