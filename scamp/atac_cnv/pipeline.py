@@ -69,7 +69,8 @@ def sc_cnv_pipeline(FRAGMENT_DIRECTORY, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, 
         # Search for pickle file if already exists
         pickle_out = f"{PKL_OUTPUT_DIRECTORY}/{frag_dict[frag_file]}_windowstats.pkl"
         if Path(pickle_out).exists() :
-            data_package = pickle.load(pickle_out)
+            with open(pickle_out, "rb") as f:
+                data_package = pickle.load(f)
         # Otherwise run pipeline
         else :
             data_package = run_aggregation(frag_file, sample_name, pickle_out, windows, whitelists, N_NEIGHBORS, bgdCN=2, MAKE_TEMP_SAVE=True)
@@ -77,6 +78,11 @@ def sc_cnv_pipeline(FRAGMENT_DIRECTORY, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, 
         if data_package == None:
             print(f"Count failed for {sample_name}")
             continue
+
+        # Widen by 1e5
+        data_package['wmeta']["Start"] = data_package['wmeta']["Start"] - 100000
+        data_package['wmeta']["End"] = data_package['wmeta']["End"] + 100000
+        data_package['wmeta']["Start"] = data_package['wmeta']["Start"].clip(lower=0)
 
 
         gene_matrix, gene_to_idx = aggregate_genes(genes_pr, data_package)

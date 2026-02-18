@@ -344,6 +344,7 @@ Returns
 '''
 def aggregate_genes(genes_pr, data_package) :
     windows_pr = pr.PyRanges(data_package["wmeta"])
+
     overlaps = genes_pr.join(windows_pr)
 
     overlap_nodup = overlaps.df[["symbol", "window_id"]].drop_duplicates()
