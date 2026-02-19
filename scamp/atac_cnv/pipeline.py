@@ -52,13 +52,11 @@ def sc_cnv_pipeline(FRAGMENT_DIRECTORY, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, 
 
 
     # Create windows with blacklist
-    print("Creating windows")
+    print("Getting windows")
     blacklist_path = script_dir / REFERENCE_BLACKLIST
     blacklist_path = blacklist_path.resolve()
-    start = time.time()
     windows = get_windows(genome, WINDOW_SIZE, STEP_SIZE, blacklist_path)
-    end = time.time()
-    print(f"Window creation time: {end - start:.2f} seconds", flush=True)
+
 
     # TODO: parallelize this
     for frag_file, sample_name in frag_dict.items() :

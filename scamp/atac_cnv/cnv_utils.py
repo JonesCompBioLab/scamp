@@ -9,7 +9,7 @@ from tqdm import tqdm
 from collections import defaultdict
 import pickle
 from scipy.sparse import csr_matrix
-
+import time
 
 '''
 Download fasta for hg38 if not already present
@@ -223,6 +223,9 @@ Returns annotated windows
 def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST) :
     # Create windows file if not yet created
     if not os.path.exists(f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv") :
+        print("Windows not found, creating")
+        start = time.time()
+
         # Calculate prefix sums
         prefix_sums, windows = make_windows(genome, WINDOW_SIZE, STEP_SIZE)
 
@@ -238,6 +241,8 @@ def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST) :
         # Export
         windows_m_blacklist_fracs.df.to_csv(f'{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv', sep = '\t', index = False)
         windows_m_blacklist_fracs = pd.read_csv(f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv", sep = '\t')
+        end = time.time()
+        print(f"Window creation time: {end - start:.2f} seconds", flush=True)
 
     # If file already created, just read it in
     else :
@@ -261,7 +266,7 @@ def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST) :
 Creates cell by window matrix
 Returns pandas dataframe representation
 '''
-def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 100) :
+def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 100, batch_size = 1000000) :
     frag_df = pd.read_csv(
         frag_file,
         sep="\t",
@@ -307,7 +312,8 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
     barcodes = barcode_counts.keys()
     mask = frag_df["Barcode"].isin(barcodes)
     frag_df = frag_df.loc[mask]  
-    print(f"Unique barcodes after processing: {len(frag_df["Barcode"].unique())}")  
+    print(f"Unique barcodes after processing: {len(barcodes)}")  
+    print(f"Number of fragments: {len(frag_df)}")
     print(f"Number of windows: {len(windows)}") 
 
     windows_pr = pr.PyRanges(windows)
@@ -323,15 +329,34 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
     ends_df["End"] = ends_df["Start"]  # single-point interval
     ends_df["Count"] = 1
 
-    # Combine
+    tiles = windows['tile_name'].unique()
+    cellxwindow_df = np.zeros((len(barcodes), len(tiles)), dtype=int)
+    barcode_idx = {b: i for i, b in enumerate(barcodes)}
+    tile_idx = {t: i for i, t in enumerate(tiles)}
+
+    # Combine in chunks
     points_df = pd.concat([starts_df, ends_df], axis=0)
-    points_pr = pr.PyRanges(points_df)
     print("Overlapping...")
-    overlaps = points_pr.join(windows_pr)
+    for start in range(0, len(points_df), batch_size):
+        print(f"Fragments {start} to {start + batch_size}")
+        frag_chunk = points_df.iloc[start:start+batch_size]
+        points_pr = pr.PyRanges(frag_chunk)
+        overlaps = points_pr.join(windows_pr)
+        # For each overlap, increment the count
+        r = overlaps.df["Barcode"].map(barcode_idx).to_numpy()
+        c = overlaps.df["tile_name"].map(tile_idx).to_numpy()
+
+        np.add.at(cellxwindow_df, (r, c), 1)
+    
+        del overlaps
 
     # Output
-    cellxwindow_df = overlaps.df.groupby(["Barcode", "tile_name"]).size().unstack(fill_value=0)
-
+    # cellxwindow_df = overlaps.df.groupby(["Barcode", "tile_name"]).size().unstack(fill_value=0)
+    cellxwindow_df = pd.DataFrame(
+        cellxwindow_df,
+        index=barcodes,
+        columns=tiles
+    )
     return cellxwindow_df
 
 
