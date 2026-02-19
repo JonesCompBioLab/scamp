@@ -267,7 +267,10 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
         sep="\t",
         header=None,
         compression="gzip",
+        comment="#",
     )
+
+    print("Frag file loaded")
     
     # Resolve fragment file differences
     ncol = frag_df.shape[1]
@@ -294,6 +297,7 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
         return None
 
     # Remove minfrags
+    print("Removing based on minfrags")
     barcodes = frag_df['Barcode'].unique()
     barcode_counts = {
         barcode: idx.to_numpy()
@@ -320,6 +324,7 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
     # Combine
     points_df = pd.concat([starts_df, ends_df], axis=0)
     points_pr = pr.PyRanges(points_df)
+    print("Overlapping...")
     overlaps = points_pr.join(windows_pr)
 
     # Output
