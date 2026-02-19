@@ -306,7 +306,9 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
     }
     barcodes = barcode_counts.keys()
     mask = frag_df["Barcode"].isin(barcodes)
-    frag_df = frag_df.loc[mask]     
+    frag_df = frag_df.loc[mask]  
+    print(f"Unique barcodes after processing: {len(frag_df["Barcode"].unique())}")  
+    print(f"Number of windows: {len(windows)}") 
 
     windows_pr = pr.PyRanges(windows)
 
