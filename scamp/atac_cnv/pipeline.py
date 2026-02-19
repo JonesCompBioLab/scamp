@@ -61,7 +61,7 @@ def sc_cnv_pipeline(FRAGMENT_DIRECTORY, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, 
     print(f"Window creation time: {end - start:.2f} seconds", flush=True)
 
     # TODO: parallelize this
-    for frag_file, sample_name in tqdm(frag_dict.items(), desc = "Processing fragment files") :
+    for frag_file, sample_name in frag_dict.items() :
         print(f"Processing {sample_name}")
         # Pickle file output
         if PKL_OUTPUT_DIRECTORY is None :
