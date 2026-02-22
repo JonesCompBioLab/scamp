@@ -68,15 +68,26 @@ def read_frag_files(data_dir, fragment_key) :
 Make pyranges windows, not yet accounting for blacklist
 Returns prefix sums for GC and AT content, and windows
 '''
-def make_windows(genome, window_size = 3000000, sliding_size = 1000000) :
+def make_windows(genome, REFERENCE_BLACKLIST, window_size = 3000000, sliding_size = 1000000) :
     # Exclude experimental chromosomes
     standard_chroms = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY"]
     chroms = [c for c in genome.keys() if c in standard_chroms]
 
+    # Set up blacklist
+    blacklist = pr.read_bed(f"{REFERENCE_BLACKLIST}")
+    # Remove small sections of blacklist
+    blacklist = blacklist[ (blacklist.End - blacklist.Start) > 1000 ]
+
     # {chr:{'GC':[...], 'AT':[...]}}
     # N content is calculated from the other two
-    prefix_sums = {}
-    for chr in tqdm(chroms, desc="Computing prefix sums for windows") :
+    # prefix_sums = {}
+
+    # list of window dicts
+    final_dfs = []
+
+    print("Computing windows...")
+    for chr in chroms :
+        print(f"{chr}")
         seq = genome[chr][:]
         
         # Faster than a string list
@@ -85,27 +96,32 @@ def make_windows(genome, window_size = 3000000, sliding_size = 1000000) :
         gc_flags = (seq_array == b'G') | (seq_array == b'C')
         at_flags = (seq_array == b'A') | (seq_array == b'T')
 
-        prefix_sums[chr] = {'GC' : np.cumsum(gc_flags), 'AT' : np.cumsum(at_flags)}
+        prefix_sums = {'GC' : np.cumsum(gc_flags), 'AT' : np.cumsum(at_flags)}
+        chrom_len = len(prefix_sums["GC"])
 
-    # list of window dicts
-    rows = []
-
-    for chrom in tqdm(prefix_sums.keys(), desc="Creating windows"):
-        chrom_len = len(prefix_sums[chrom]["GC"])
-
+        rows = []
         for start in range(0, chrom_len - window_size + 1, sliding_size):
             end = start + window_size
             rows.append({
-                "Chromosome": chrom,
+                "Chromosome": chr,
                 "Start": start,
                 "End": end,
-                "window_id": f"{chrom}:{start}-{end}"
+                "window_id": f"{chr}:{start}-{end}"
             })
 
-    windows = pr.PyRanges(pd.DataFrame(rows))
+        temp_windows = pr.PyRanges(pd.DataFrame(rows))
 
+        # Subtract blacklist
+        temp_windows_m_blacklist = subtract(temp_windows, blacklist)
+        temp_windows_m_blacklist = temp_windows_m_blacklist.df.copy()
 
-    return prefix_sums, windows
+        # Calculate GC, AT fractions
+        temp_windows_m_blacklist_fracs = calculate_fractions(temp_windows_m_blacklist, prefix_sums)
+        final_dfs.append(temp_windows_m_blacklist_fracs)
+
+    windows_m_blacklist_fracs = pd.concat(final_dfs, ignore_index=True)
+
+    return windows_m_blacklist_fracs
 
 '''
 Read and extract whitelist from whitelist file
@@ -195,25 +211,28 @@ def calculate_fractions(windows, prefix_sums):
     gc_fractions = []
     at_fractions = []
     n_fractions = []
-    for i, window in windows.df.iterrows() :
+    for i, window in windows.iterrows() :
 
         # Calculate the GC, AT, and N counts in the window using prefix sums
-        gc_count = prefix_sums[window['Chromosome']]['GC'][window['End']] - prefix_sums[window['Chromosome']]['GC'][window['Start']]
-        at_count = prefix_sums[window['Chromosome']]['AT'][window['End']] - prefix_sums[window['Chromosome']]['AT'][window['Start']]
+        gc_count = prefix_sums['GC'][window['End']] - prefix_sums['GC'][window['Start']]
+        at_count = prefix_sums['AT'][window['End']] - prefix_sums['AT'][window['Start']]
 
         total_bases = (window['End'] - window['Start']) 
 
         gc_fractions.append(gc_count/total_bases)
         at_fractions.append(at_count/total_bases)
         n_fractions.append(1 - gc_count/total_bases - at_count/total_bases)
-
-    new_windows = windows.df.copy()
     
-    new_windows['GC_fraction'] = gc_fractions
-    new_windows['AT_fraction'] = at_fractions
-    new_windows['N_fraction'] = n_fractions
+    windows['GC_fraction'] = gc_fractions
+    windows['AT_fraction'] = at_fractions
+    windows['N_fraction'] = n_fractions
 
-    return pr.PyRanges(new_windows)
+    return windows
+
+def weighted_avg(subdf, col):
+    # weighted by width
+    return (subdf[col] * subdf['width']).sum() / subdf['width'].sum()
+
 
 '''
 Creates window file if not yet made, otherwise opens the windows file and cleans it
@@ -227,19 +246,10 @@ def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST) :
         start = time.time()
 
         # Calculate prefix sums
-        prefix_sums, windows = make_windows(genome, WINDOW_SIZE, STEP_SIZE)
-
-        # Remove blacklist
-        blacklist = pr.read_bed(f"{REFERENCE_BLACKLIST}")
-        # Remove small sections of blacklist
-        blacklist = blacklist[ (blacklist.End - blacklist.Start) > 1000 ]
-        windows_m_blacklist = subtract(windows, blacklist)
-
-        # Calculate GC, AT fractions
-        windows_m_blacklist_fracs = calculate_fractions(windows_m_blacklist, prefix_sums)
+        windows_m_blacklist_fracs = make_windows(genome, REFERENCE_BLACKLIST, WINDOW_SIZE, STEP_SIZE)
 
         # Export
-        windows_m_blacklist_fracs.df.to_csv(f'{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv', sep = '\t', index = False)
+        windows_m_blacklist_fracs.to_csv(f'{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv', sep = '\t', index = False)
         windows_m_blacklist_fracs = pd.read_csv(f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv", sep = '\t')
         end = time.time()
         print(f"Window creation time: {end - start:.2f} seconds", flush=True)
@@ -247,6 +257,19 @@ def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST) :
     # If file already created, just read it in
     else :
         windows_m_blacklist_fracs = pd.read_csv(f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv", sep = '\t')
+
+    # Recombine windows
+    windows_m_blacklist_fracs['width'] = windows_m_blacklist_fracs['End'] - windows_m_blacklist_fracs['Start']
+    windows_m_blacklist_fracs = windows_m_blacklist_fracs.groupby('window_id').apply(
+    lambda x: pd.Series({
+        'Chromosome': x['Chromosome'].iloc[0],
+        'Start': x['Start'].min(),
+        'End': x['End'].max(),
+        'GC_fraction': weighted_avg(x, 'GC_fraction'),
+        'AT_fraction': weighted_avg(x, 'AT_fraction'),
+        'N_fraction': weighted_avg(x, 'N_fraction')
+        })
+    ).reset_index()
 
     # Remove windows with large fraction as N
     windows_m_blacklist_fracs = windows_m_blacklist_fracs.loc[windows_m_blacklist_fracs["N_fraction"] < 0.001]
@@ -264,6 +287,7 @@ def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST) :
 
 '''
 Creates cell by window matrix
+Batch size is the number of points it looks at at a time (twice the number of fragments)
 Returns pandas dataframe representation
 '''
 def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 100, batch_size = 1000000) :
@@ -338,7 +362,7 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
     points_df = pd.concat([starts_df, ends_df], axis=0)
     print("Overlapping...")
     for start in range(0, len(points_df), batch_size):
-        print(f"Fragments {start} to {start + batch_size}")
+        print(f"Fragments {start/2} to {(start + batch_size)/2}")
         frag_chunk = points_df.iloc[start:start+batch_size]
         points_pr = pr.PyRanges(frag_chunk)
         overlaps = points_pr.join(windows_pr)
