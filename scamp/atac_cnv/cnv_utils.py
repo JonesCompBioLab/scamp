@@ -214,8 +214,12 @@ def calculate_fractions(windows, prefix_sums):
     for i, window in windows.iterrows() :
 
         # Calculate the GC, AT, and N counts in the window using prefix sums
-        gc_count = prefix_sums['GC'][window['End']] - prefix_sums['GC'][window['Start']]
-        at_count = prefix_sums['AT'][window['End']] - prefix_sums['AT'][window['Start']]
+        if window['Start'] > 0 :
+            gc_count = prefix_sums['GC'][window['End']-1] - prefix_sums['GC'][window['Start']-1]
+            at_count = prefix_sums['AT'][window['End']-1] - prefix_sums['AT'][window['Start']-1]
+        else :
+            gc_count = prefix_sums['GC'][window['End']-1]
+            at_count = prefix_sums['AT'][window['End']-1]
 
         total_bases = (window['End'] - window['Start']) 
 
@@ -375,7 +379,6 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
         del overlaps
 
     # Output
-    # cellxwindow_df = overlaps.df.groupby(["Barcode", "tile_name"]).size().unstack(fill_value=0)
     cellxwindow_df = pd.DataFrame(
         cellxwindow_df,
         index=barcodes,
@@ -491,7 +494,7 @@ def run_aggregation(frag_file, sample_name, pickle_out, windows, whitelists, nei
         
         # find nearest neighbors by GC
         distances = np.abs(gc[i] - gc)
-        nn_idx = np.argsort(distances)[1 : neighbors+1]
+        nn_idx = np.argsort(distances, kind='stable')[1 : neighbors+1]
 
         # background
         bg = X[nn_idx, :]
@@ -504,7 +507,7 @@ def run_aggregation(frag_file, sample_name, pickle_out, windows, whitelists, nei
     CNs = bgdCN * (2 ** log2FC)
 
     # Resulting data
-    data_package = {"wmeta" : wmeta, "windows" : windows_r, "windowidx" : window_ids_final, "barcodeidx": cell_barcodes, "CNs" : CNs, "bdgMean" : bdgMean,  "log2FC" : log2FC}
+    data_package = {"wmeta" : wmeta, "windows" : windows_r, "windowidx" : window_ids_final, "barcodeidx": cell_barcodes, "CNs" : CNs, "bdgMean" : bdgMean, "counts" : X, "log2FC" : log2FC}
     
     # Export (temporary save)
     if MAKE_TEMP_SAVE :
