@@ -118,7 +118,7 @@ def cluster (
     # Get each ecDNA's copy numbers as a vector
     ecDNA_genes = prediction_df.loc[prediction_df["pred"], "gene"].tolist()
 
-    if len(ecDNA_genes) == None :
+    if len(ecDNA_genes) == 0 :
         prediction_df["cluster"] = -1
         return prediction_df
 
