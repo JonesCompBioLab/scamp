@@ -494,7 +494,7 @@ def run_aggregation(frag_file, sample_name, pickle_out, windows, whitelists, nei
         
         # find nearest neighbors by GC
         distances = np.abs(gc[i] - gc)
-        nn_idx = np.argsort(distances, kind='stable')[1 : neighbors+1]
+        nn_idx = np.argsort(distances)[1 : neighbors+1]
 
         # background
         bg = X[nn_idx, :]
