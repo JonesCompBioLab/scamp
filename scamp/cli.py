@@ -248,7 +248,7 @@ def predict_ecdna(
             cluster_distance_threshold
         )
 
-    os.makedirs(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
 
     # Output predictions and visualizations
     predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
