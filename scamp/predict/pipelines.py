@@ -120,6 +120,7 @@ def cluster (
 
     if len(ecDNA_genes) == 0 :
         prediction_df["cluster"] = -1
+        print("No ecDNA detected in sample")
         return prediction_df
 
     counts_df_ecDNA = counts_df[ecDNA_genes]
