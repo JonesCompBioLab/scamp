@@ -9,11 +9,6 @@ import pickle
 from .cnv_utils import *
 import time
 
-# # TODO: currently, this whitelist is for one sample, typically the whitelist has samplename#cell, so try to resolve that!
-# WHITELIST_FILE = "ML499M1-S1_whitelist.txt"
-# WINDOW_SIZE = 3000000
-# STEP_SIZE = 1000000
-# N_NEIGHBORS = 200
 
 '''
 CNV from scATAC Pipeline
