@@ -2,25 +2,13 @@
 Command-line tools for scAmp.
 """
 
-from __future__ import annotations
+import os
 
+from __future__ import annotations
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
-
-import os
-import pathlib
-import pickle
 from typing import Annotated, Union
-import scanpy as sc
-
 import typer
-
-from scamp import io
-from scamp.mixins import CLIError
-from scamp import predict
-from scamp import plotting
-from scamp import vis
-from scamp import atac_cnv
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
@@ -74,51 +62,19 @@ def quantify_copy_numbers(
     ] = 200,
     fragment_file_key: Annotated[
         str, typer.Argument(help="Path to tab separated two column list of matched file names and sample names")
-    ] = None
-    # reference_genome_name: Annotated[
-    #     str,
-    #     typer.Option(help="Reference genome name, to pair with a blacklist. Currently only supports hg38"),
-    # ] = "hg38",
+    ] = None,
+    reference_genome_name: Annotated[
+        str,
+        typer.Option(help="Reference genome name, to pair with a blacklist. Currently only supports hg38"),
+    ] = "hg38"
 ):
+    from scamp import atac_cnv
 
     atac_cnv.sc_cnv_pipeline(fragment_directory, whitelist_file, window_size, step_size, n_neighbors, output_directory, 
                     pickle_dir, fragment_file_key, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
                     REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz')
 
-    # binned_copy_number_script = (
-    #     f"{os.path.dirname(__file__)}/scripts/scATAC_CNV.R"
-    # )
-    # gene_aggregation_script = (
-    #     f"{os.path.dirname(__file__)}/scripts/aggregate_gene_copy_number.R"
-    # )
 
-    # # compute copy-numbers in genomic windows
-    # if fragment_directory:
-        
-    #     if whitelist_file is None:
-    #         raise CLIError("If starting the copy-number pipeline from the " 
-    #                         "beginning, please provide a whitelist fiel")
-    #     print(
-    #         f"Binning copy-numbers from {fragment_directory} in windows "
-    #         f"of size {window_size}..."
-    #     )
-    #     os.system(
-    #         f"Rscript {binned_copy_number_script} "
-    #         f"{fragment_directory} {window_size} "
-    #         f"{step_size} {n_neighbors} "
-    #         f"{whitelist_file} {output_directory} "
-    #         f"{reference_genome_name} {os.path.dirname(__file__)}"
-    #     )
-
-    # # bin by gene
-    # if not copy_number_directory:
-    #     copy_number_directory = output_directory
-
-    # print(f"Aggregating together copy-numbers across genes...")
-    # os.system(
-    #     f"Rscript {gene_aggregation_script} "
-    #     f"{copy_number_directory} {output_directory} {reference_genome_name}"
-    # )
 
 @scamp_app.command(name="visualize", help="Visualize ecDNA results with cellxgene")
 def visualize(
@@ -146,6 +102,9 @@ def visualize(
 
 
 ) :
+    from scamp import vis
+    import scanpy as sc
+
     # Where the files will go
     os.makedirs(temp_folder, exist_ok=True)
 
@@ -205,6 +164,8 @@ def predict_ecdna(
         float, typer.Option(help="Distance threshold for hierarchical clustering.")
     ] = 0.4
 ) -> None:
+    from scamp import predict
+    from scamp import plotting
 
     # Detect extension
     if os.path.isdir(copy_numbers_file) :

@@ -1,8 +1,8 @@
+import os
 from pathlib import Path
 import pandas as pd
 import numpy as np
 import pyranges as pr
-import os
 from tqdm import tqdm
 import pickle
 
