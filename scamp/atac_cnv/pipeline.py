@@ -24,7 +24,7 @@ FRAGMENT_FILE_KEY: a file that denotes the sample names for each fragment (if no
 GENES_ANNO: gene annotation path
 REFERENCE_BLACKLIST: blacklist file
 '''
-def sc_cnv_pipeline(FRAGMENT_DIRECTORY, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, N_NEIGHBORS, OUTPUT_DIRECTORY, 
+def sc_cnv_pipeline(FRAGMENT_DIRECTORY, cores_per_sample, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, N_NEIGHBORS, OUTPUT_DIRECTORY, 
                     PKL_OUTPUT_DIRECTORY, FRAGMENT_FILE_KEY = None, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
                     REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz') :
     os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)

@@ -1,10 +1,10 @@
 """
 Command-line tools for scAmp.
 """
+from __future__ import annotations
 
 import os
 
-from __future__ import annotations
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 from typing import Annotated, Union
@@ -63,14 +63,21 @@ def quantify_copy_numbers(
     fragment_file_key: Annotated[
         str, typer.Argument(help="Path to tab separated two column list of matched file names and sample names")
     ] = None,
+    cores_per_sample: Annotated[
+        int, typer.Option(help="Number of cores to allocate per sample")
+    ] = 8,
     reference_genome_name: Annotated[
         str,
         typer.Option(help="Reference genome name, to pair with a blacklist. Currently only supports hg38"),
     ] = "hg38"
 ):
+    os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
+    os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
+    os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
+
     from scamp import atac_cnv
 
-    atac_cnv.sc_cnv_pipeline(fragment_directory, whitelist_file, window_size, step_size, n_neighbors, output_directory, 
+    atac_cnv.sc_cnv_pipeline(fragment_directory, cores_per_sample, whitelist_file, window_size, step_size, n_neighbors, output_directory, 
                     pickle_dir, fragment_file_key, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
                     REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz')
 
