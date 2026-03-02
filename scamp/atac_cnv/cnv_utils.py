@@ -294,7 +294,7 @@ Creates cell by window matrix
 Batch size is the number of points it looks at at a time (twice the number of fragments)
 Returns pandas dataframe representation
 '''
-def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 100, batch_size = 1000000) :
+def create_cellxwindows(out_log, frag_file, sample_name, windows, whitelists, minFrags = 100, batch_size = 1000000) :
     frag_df = pd.read_csv(
         frag_file,
         sep="\t",
@@ -303,7 +303,7 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
         comment="#",
     )
 
-    print("Frag file loaded")
+    out_log.append("Frag file loaded")
     
     # Resolve fragment file differences
     ncol = frag_df.shape[1]
@@ -326,11 +326,11 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
     ]
 
     if len(frag_df) == 0 :
-        print(f"WARNING: no cells passed minFrag & whitelist in {frag_file}, excluding")
+        out_log.append(f"WARNING: no cells passed minFrag & whitelist in {frag_file}, excluding")
         return None
 
     # Remove minfrags
-    print("Removing based on minfrags")
+    out_log.append("Removing based on minfrags")
     barcodes = frag_df['Barcode'].unique()
     barcode_counts = {
         barcode: idx.to_numpy()
@@ -340,9 +340,9 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
     barcodes = barcode_counts.keys()
     mask = frag_df["Barcode"].isin(barcodes)
     frag_df = frag_df.loc[mask]  
-    print(f"Unique barcodes after processing: {len(barcodes)}")  
-    print(f"Number of fragments: {len(frag_df)}")
-    print(f"Number of windows: {len(windows)}") 
+    out_log.append(f"Unique barcodes after processing: {len(barcodes)}")  
+    out_log.append(f"Number of fragments: {len(frag_df)}")
+    out_log.append(f"Number of windows: {len(windows)}") 
 
     windows_pr = pr.PyRanges(windows)
 
@@ -364,9 +364,9 @@ def create_cellxwindows(frag_file, sample_name, windows, whitelists, minFrags = 
 
     # Combine in chunks
     points_df = pd.concat([starts_df, ends_df], axis=0)
-    print("Overlapping...")
+    out_log.append("Overlapping...")
     for start in range(0, len(points_df), batch_size):
-        print(f"Fragments {start/2} to {(start + batch_size)/2}")
+        # out_log.append(f"Fragments {start/2} to {(start + batch_size)/2}")
         frag_chunk = points_df.iloc[start:start+batch_size]
         points_pr = pr.PyRanges(frag_chunk)
         overlaps = points_pr.join(windows_pr)
@@ -440,9 +440,9 @@ def aggregate_genes(genes_pr, data_package) :
 '''
 Cell count and aggregation pipeline
 '''
-def run_aggregation(frag_file, sample_name, pickle_out, windows, whitelists, neighbors = 200, bgdCN = 2, MAKE_TEMP_SAVE = True) :
+def run_aggregation(out_log, frag_file, sample_name, pickle_out, windows, whitelists, neighbors = 200, bgdCN = 2, MAKE_TEMP_SAVE = True) :
     # cell by windows matrix
-    cellxwindows_df = create_cellxwindows(frag_file, sample_name, windows, whitelists)
+    cellxwindows_df = create_cellxwindows(out_log, frag_file, sample_name, windows, whitelists)
 
     if cellxwindows_df is None :
         return None

@@ -66,20 +66,31 @@ def quantify_copy_numbers(
     cores_per_sample: Annotated[
         int, typer.Option(help="Number of cores to allocate per sample")
     ] = 8,
+    recreate_pkl: Annotated[
+        bool,
+        typer.Option(help="Rewrites pkl output file (use if edits were made to the sample with the same name and output location)"),
+    ] = False,
     reference_genome_name: Annotated[
         str,
         typer.Option(help="Reference genome name, to pair with a blacklist. Currently only supports hg38"),
     ] = "hg38"
 ):
+    import multiprocessing
+
+    TOTAL_CORES = multiprocessing.cpu_count()
+    cores_per_sample = min(cores_per_sample, TOTAL_CORES)
+    print(f"Using {cores_per_sample} cores for each sample")
+    max_workers = max(1, TOTAL_CORES // cores_per_sample)
+    print(f"Maximum workers active: {max_workers}")
     os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
     os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
     os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
 
     from scamp import atac_cnv
 
-    atac_cnv.sc_cnv_pipeline(fragment_directory, cores_per_sample, whitelist_file, window_size, step_size, n_neighbors, output_directory, 
-                    pickle_dir, fragment_file_key, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
-                    REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz')
+    atac_cnv.sc_cnv_pipeline(fragment_directory, cores_per_sample, max_workers, whitelist_file, window_size, step_size, 
+                             n_neighbors, output_directory, pickle_dir, recreate_pkl, fragment_file_key, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
+                             REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz')
 
 
 

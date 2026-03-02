@@ -8,24 +8,29 @@ import pickle
 
 from .cnv_utils import *
 import time
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 '''
 CNV from scATAC Pipeline
 
 FRAGMENT_DIRECTORY: dir with fragment files (reads all that end with .tsv.gz)
+cores_per_sample: number of cores to use on each sample (there is some parallel processing architecture per sample)
+max_workers: number of samples to run in parallel
 WHITELIST_FILE: whitelist
 WINDOW_SIZE: window sizes for counts
 STEP_SIZE: difference between windows
 N_NEIGHBORS: number of nearest neghbors to average for GC bias
 OUTPUT_DIRECTORY: output location
 PKL_OUTPUT_DIRECTORY: intermediate pickle file location
+recreate_pkl: whether or not to rewrite pickle file
 FRAGMENT_FILE_KEY: a file that denotes the sample names for each fragment (if none, assumes correct file formats)
 GENES_ANNO: gene annotation path
 REFERENCE_BLACKLIST: blacklist file
 '''
-def sc_cnv_pipeline(FRAGMENT_DIRECTORY, cores_per_sample, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, N_NEIGHBORS, OUTPUT_DIRECTORY, 
-                    PKL_OUTPUT_DIRECTORY, FRAGMENT_FILE_KEY = None, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
+def sc_cnv_pipeline(FRAGMENT_DIRECTORY, cores_per_sample, max_workers, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, N_NEIGHBORS, OUTPUT_DIRECTORY, 
+                    PKL_OUTPUT_DIRECTORY, recreate_pkl, FRAGMENT_FILE_KEY = None, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
                     REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz') :
     os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
@@ -52,57 +57,83 @@ def sc_cnv_pipeline(FRAGMENT_DIRECTORY, cores_per_sample, WHITELIST_FILE, WINDOW
     blacklist_path = blacklist_path.resolve()
     windows = get_windows(genome, WINDOW_SIZE, STEP_SIZE, blacklist_path)
 
+    total_time_start = time.time()
 
-    # TODO: parallelize this
-    for frag_file, sample_name in frag_dict.items() :
-        print(f"Processing {sample_name}")
-        # Pickle file output
-        if PKL_OUTPUT_DIRECTORY is None :
-            PKL_OUTPUT_DIRECTORY = f"{OUTPUT_DIRECTORY}/pkl_files"
-            os.makedirs(PKL_OUTPUT_DIRECTORY, exist_ok=True)
+    with ProcessPoolExecutor(max_workers = max_workers) as executor :
+        logs = []
+        for frag_file, sample_name in frag_dict.items() :
+            logs.append(
+                executor.submit(
+                    run_sample, frag_file, sample_name,
+                    OUTPUT_DIRECTORY, PKL_OUTPUT_DIRECTORY,
+                    windows, whitelists, N_NEIGHBORS, genes_pr,
+                    recreate_pkl, cores_per_sample
+                )
+            )
 
-        if not os.path.exists(PKL_OUTPUT_DIRECTORY):
-            os.makedirs(PKL_OUTPUT_DIRECTORY, exist_ok=True)
+        for log in as_completed(logs):
+            result = log.result()
+            if result is not None:
+                for line in result :
+                    print(line)
+    
+    total_time_end = time.time()
+    print(f"Total time for all samples in parallel: {total_time_end - total_time_start:.2f} seconds")
 
-        # Search for pickle file if already exists
-        pickle_out = f"{PKL_OUTPUT_DIRECTORY}/{frag_dict[frag_file]}_windowstats.pkl"
-        if Path(pickle_out).exists() :
-            print(f"Pickle file found: {pickle_out}")
+    print("Done")
 
-            with open(pickle_out, "rb") as f:
-                data_package = pickle.load(f)
-        # Otherwise run pipeline
-        else :
-            print("Creating cell by window count matrix")
-            start = time.time()
-            data_package = run_aggregation(frag_file, sample_name, pickle_out, windows, whitelists, N_NEIGHBORS, bgdCN=2, MAKE_TEMP_SAVE=True)
-            end = time.time()
-            print(f"Cell by window runtime: {end - start:.2f} seconds", flush=True)
+def run_sample(frag_file, sample_name, OUTPUT_DIRECTORY, PKL_OUTPUT_DIRECTORY, windows, whitelists, N_NEIGHBORS, genes_pr, recreate_pkl, cores_per_sample) :
+    out_log = []
+    out_log.append("")
+    out_log.append(f"Processing {sample_name}")
+    # Pickle file output
+    if PKL_OUTPUT_DIRECTORY is None :
+        PKL_OUTPUT_DIRECTORY = f"{OUTPUT_DIRECTORY}/pkl_files"
+        os.makedirs(PKL_OUTPUT_DIRECTORY, exist_ok=True)
 
+    if not os.path.exists(PKL_OUTPUT_DIRECTORY):
+        os.makedirs(PKL_OUTPUT_DIRECTORY, exist_ok=True)
 
-        if data_package == None:
-            print(f"Count failed for {sample_name}")
-            continue
-        
+    # Search for pickle file if already exists
+    pickle_out = f"{PKL_OUTPUT_DIRECTORY}/{sample_name}_windowstats.pkl"
+    if Path(pickle_out).exists() and not recreate_pkl :
+        out_log.append(f"Pickle file found: {pickle_out}")
+
+        with open(pickle_out, "rb") as f:
+            data_package = pickle.load(f)
+    # Otherwise run pipeline
+    else :
+        out_log.append("Creating cell by window count matrix")
         start = time.time()
-
-
-        # Widen by 1e5
-        data_package['wmeta']["Start"] = data_package['wmeta']["Start"] - 100000
-        data_package['wmeta']["End"] = data_package['wmeta']["End"] + 100000
-        data_package['wmeta']["Start"] = data_package['wmeta']["Start"].clip(lower=0)
-
-        print("Aggregating windows for genes")
-        gene_matrix, gene_to_idx = aggregate_genes(genes_pr, data_package)
-        col_names = [name for name, idx in sorted(gene_to_idx.items(), key=lambda x: x[1])]
-        row_names = [name for name, idx in sorted(data_package['barcodeidx'].items(), key=lambda x: x[1])]
-
-        cnv_df = pd.DataFrame(gene_matrix.T, index=row_names, columns=col_names)
-
-        # Export as TSV
-        print("Exporting")
-        cnv_df.to_csv(f"{OUTPUT_DIRECTORY}/{frag_dict[frag_file]}_cnv.tsv", sep="\t")
-
+        data_package = run_aggregation(out_log, frag_file, sample_name, pickle_out, windows, whitelists, N_NEIGHBORS, bgdCN=2, MAKE_TEMP_SAVE=True)
         end = time.time()
-        print(f"Gene aggregation runtime {end - start:.2f} seconds", flush=True)
-        print("Done")
+        out_log.append(f"Cell by window runtime: {end - start:.2f} seconds")
+
+
+    if data_package == None:
+        out_log.append(f"Count failed for {sample_name}")
+        return out_log
+    
+    start = time.time()
+
+
+    # Widen by 1e5
+    data_package['wmeta']["Start"] = data_package['wmeta']["Start"] - 100000
+    data_package['wmeta']["End"] = data_package['wmeta']["End"] + 100000
+    data_package['wmeta']["Start"] = data_package['wmeta']["Start"].clip(lower=0)
+
+    out_log.append("Aggregating windows for genes")
+    gene_matrix, gene_to_idx = aggregate_genes(genes_pr, data_package)
+    col_names = [name for name, idx in sorted(gene_to_idx.items(), key=lambda x: x[1])]
+    row_names = [name for name, idx in sorted(data_package['barcodeidx'].items(), key=lambda x: x[1])]
+
+    cnv_df = pd.DataFrame(gene_matrix.T, index=row_names, columns=col_names)
+
+    # Export as TSV
+    out_log.append("Exporting")
+    cnv_df.to_csv(f"{OUTPUT_DIRECTORY}/{sample_name}_cnv.tsv", sep="\t")
+
+    end = time.time()
+    out_log.append(f"Gene aggregation runtime {end - start:.2f} seconds")
+    out_log.append("")
+    return(out_log)
