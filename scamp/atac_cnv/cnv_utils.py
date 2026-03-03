@@ -361,8 +361,9 @@ def create_cellxwindows(out_log, frag_file, sample_name, windows, whitelists, mi
         overlaps = points_pr.join(windows_pr)
 
         # For each overlap, increment the count
-        for barcode, tile in zip(overlaps.df["Barcode"], overlaps.df["tile_name"]):
-            cellxwindow_dict[barcode][tile] += 1
+        if not overlaps.df.empty and "Barcode" in overlaps.df.columns and "tile_name" in overlaps.df.columns:
+            for barcode, tile in zip(overlaps.df["Barcode"], overlaps.df["tile_name"]):
+                cellxwindow_dict[barcode][tile] += 1
         
         del overlaps, points_pr    
 
