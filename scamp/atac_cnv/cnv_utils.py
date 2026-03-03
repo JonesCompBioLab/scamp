@@ -58,7 +58,10 @@ def read_frag_files(data_dir, fragment_key) :
 
     # search for .tsv.gz, remove the ending from sample name
     for f in data_dir.glob("*.tsv.gz") :
-        sample = f.name.replace("-atac_fragments.tsv.gz", "")
+        if 'atac' in f.name :
+            sample = f.name.replace("-atac_fragments.tsv.gz", "")
+        else :
+            sample = f.name.replace("-fragments.tsv.gz", "")
         frag_dict[str(f)] = sample
 
     return frag_dict

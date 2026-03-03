@@ -65,7 +65,10 @@ def quantify_copy_numbers(
     ] = None,
     cores_per_sample: Annotated[
         int, typer.Option(help="Number of cores to allocate per sample")
-    ] = 8,
+    ] = 16,
+    max_workers: Annotated[
+        int, typer.Option(help="Maximum number of workers (limit for memory bottlenecks. If not specified, becomes #cores/cores_per_sample)")
+    ] = None,
     recreate_pkl: Annotated[
         bool,
         typer.Option(help="Rewrites pkl output file (use if edits were made to the sample with the same name and output location)"),
@@ -80,7 +83,8 @@ def quantify_copy_numbers(
     TOTAL_CORES = multiprocessing.cpu_count()
     cores_per_sample = min(cores_per_sample, TOTAL_CORES)
     print(f"Using {cores_per_sample} cores for each sample")
-    max_workers = max(1, TOTAL_CORES // cores_per_sample)
+    if max_workers is None :
+        max_workers = max(1, TOTAL_CORES // cores_per_sample)
     print(f"Maximum workers active: {max_workers}")
     os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
     os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
