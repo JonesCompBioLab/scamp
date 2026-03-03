@@ -162,7 +162,12 @@ def visualize(
 def predict_ecdna(
     output_dir: OutputDirArg,
     model_file: ModelDirArg,
-    copy_numbers_file: CopyNumberFileArg,
+    copy_numbers_file: Annotated[
+        str, typer.Option(help="File path to anndata, tab/comma-delimited file, or MEX folder of copy number data")
+    ] = None,
+    copy_numbers_folder: Annotated[
+        str, typer.Option(help="Folder path containing anndatas, tab/comma-delimited files, or MEX folders of copy number data")
+    ] = None,
     decision_rule: Annotated[
         float, typer.Option(help="Likelihood decision rule.")
     ] = 0.5,
@@ -180,64 +185,57 @@ def predict_ecdna(
     ] = False,
     cluster_distance_threshold: Annotated[
         float, typer.Option(help="Distance threshold for hierarchical clustering.")
-    ] = 0.4
+    ] = 0.4,
+    cores_per_sample: Annotated[
+        int, typer.Option(help="Number of cores to allocate per sample")
+    ] = 8
 ) -> None:
+    
+    import multiprocessing
+
+    TOTAL_CORES = multiprocessing.cpu_count()
+    cores_per_sample = min(cores_per_sample, TOTAL_CORES)
+    print(f"Using {cores_per_sample} cores for each sample")
+    max_workers = max(1, TOTAL_CORES // cores_per_sample)
+    print(f"Maximum workers active: {max_workers}")
+    os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
+    os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
+    os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
+
     from scamp import predict
-    from scamp import plotting
+    from pathlib import Path
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    import time
 
-    # Detect extension
-    if os.path.isdir(copy_numbers_file) :
-        mode = "MEX"
+    if copy_numbers_file is None and copy_numbers_folder is None :
+        print("Error: requires copy-numbers-file or copy-numbers-folder")
+    
+    if copy_numbers_folder is None :
+        # Just one file if only one provided
+        files_list = []
+        files_list.append(copy_numbers_file)
     else :
-        copy_numbers_ext = copy_numbers_file.split('.')[-1]
-        if copy_numbers_ext == "h5ad" :
-            mode = "anndata"
-        else :
-            mode = "copynumber"
+        data_dir = Path(copy_numbers_folder).resolve()
+        files_list = [str(f) for f in data_dir.glob("*")]
 
-    # Call different wrapper for each prediction type
-    if mode == "copynumber":
-        predictions = predict.predict_ecdna_from_copy_number(
-            copy_numbers_file,
-            model_file,
-            decision_rule,
-            min_copy_number,
-            max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
-        )
-    elif mode == "MEX" :
-        predictions = predict.predict_ecdna_from_mex(
-            copy_numbers_file,
-            model_file,
-            decision_rule,
-            min_copy_number,
-            max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
-        )
-    else :
-        predictions  = predict.predict_ecdna_from_anndata(
-            copy_numbers_file,
-            model_file,
-            decision_rule,
-            min_copy_number,
-            max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
-        )
+    # Parallelization
+    total_time_start = time.time()
+    with ProcessPoolExecutor(max_workers = max_workers) as executor :
+        logs = []
+        for file in files_list :
+            logs.append(
+                executor.submit(
+                    predict.run_sample, file, output_dir, model_file, decision_rule, min_copy_number, max_percentile, 
+                                        filter_copy_number, cluster_distance_threshold, no_plot)
+                )
+            
+        for log in as_completed(logs):
+            result = log.result()
+            if result is not None:
+                for line in result :
+                    print(line)
+    
+    total_time_end = time.time()
+    print(f"Total time for all samples in parallel: {total_time_end - total_time_start:.2f} seconds")
 
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Output predictions and visualizations
-    predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
-    if not no_plot:
-        plotting.plot_scamp_predictions_plotly(
-            predictions,
-            f"{output_dir}/ecDNA_predictions.html",
-            title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
-        )
-
-
-    print(f"Output written out to {output_dir}.")
-
+    print("Done")
