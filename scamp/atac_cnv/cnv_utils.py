@@ -295,95 +295,97 @@ Batch size is the number of points it looks at at a time (twice the number of fr
 Returns pandas dataframe representation
 '''
 def create_cellxwindows(out_log, frag_file, sample_name, windows, whitelists, minFrags = 100, batch_size = 1000000) :
-    frag_df = pd.read_csv(
+    frag_iter = pd.read_csv(
         frag_file,
         sep="\t",
         header=None,
         compression="gzip",
         comment="#",
+        chunksize=batch_size
     )
 
     out_log.append("Frag file loaded")
-    
-    # Resolve fragment file differences
-    ncol = frag_df.shape[1]
-    if ncol == 4:
-        frag_df.columns = ["Chromosome", "Start", "End", "Barcode"]
-    elif ncol == 5:
-        frag_df.columns = ["Chromosome", "Start", "End", "Barcode", "Count"]
-    else:
-        raise ValueError(f"Unexpected number of columns in fragment file {frag_file}: {ncol}")
-    
-    if whitelists is not None and sample_name in whitelists :
-        mask = frag_df["Barcode"].isin(whitelists[sample_name])
-        frag_df = frag_df.loc[mask] 
-    
 
-    # Remove chromosomes
-    chrs_to_use = [f"chr{i}" for i in range(1, 23)]
-    frag_df = frag_df[
-        frag_df["Chromosome"].isin(chrs_to_use)
-    ]
-
-    if len(frag_df) == 0 :
-        out_log.append(f"WARNING: no cells passed minFrag & whitelist in {frag_file}, excluding")
-        return None
-
-    # Remove minfrags
-    out_log.append("Removing based on minfrags")
-    barcodes = frag_df['Barcode'].unique()
-    barcode_counts = {
-        barcode: idx.to_numpy()
-        for barcode, idx in frag_df.groupby("Barcode").groups.items()
-        if len(idx) >= minFrags
-    }
-    barcodes = barcode_counts.keys()
-    mask = frag_df["Barcode"].isin(barcodes)
-    frag_df = frag_df.loc[mask]  
-    out_log.append(f"Unique barcodes after processing: {len(barcodes)}")  
-    out_log.append(f"Number of fragments: {len(frag_df)}")
-    out_log.append(f"Number of windows: {len(windows)}") 
+    # Accumulate counts in dict-of-dicts
+    cellxwindow_dict = defaultdict(lambda: defaultdict(int))
+    
+    # Track number of fragments
+    barcode_counts = defaultdict(int)
 
     windows_pr = pr.PyRanges(windows)
-
-    # Fragment starts
-    starts_df = frag_df[["Chromosome", "Start", "Barcode"]].copy()
-    starts_df["End"] = starts_df["Start"]  # make it a single-point interval
-    starts_df["Count"] = 1  # optional
-
-    # Fragment ends
-    ends_df = frag_df[["Chromosome", "End", "Barcode"]].copy()
-    ends_df = ends_df.rename(columns={"End":"Start"})
-    ends_df["End"] = ends_df["Start"]  # single-point interval
-    ends_df["Count"] = 1
-
     tiles = windows['tile_name'].unique()
-    cellxwindow_df = np.zeros((len(barcodes), len(tiles)), dtype=int)
-    barcode_idx = {b: i for i, b in enumerate(barcodes)}
     tile_idx = {t: i for i, t in enumerate(tiles)}
 
-    # Combine in chunks
-    points_df = pd.concat([starts_df, ends_df], axis=0)
-    out_log.append("Overlapping...")
-    for start in range(0, len(points_df), batch_size):
-        # out_log.append(f"Fragments {start/2} to {(start + batch_size)/2}")
-        frag_chunk = points_df.iloc[start:start+batch_size]
-        points_pr = pr.PyRanges(frag_chunk)
+
+    for frag_chunk in frag_iter :
+        # Resolve fragment file differences
+        ncol = frag_chunk.shape[1]
+        if ncol == 4:
+            frag_chunk.columns = ["Chromosome", "Start", "End", "Barcode"]
+        elif ncol == 5:
+            frag_chunk.columns = ["Chromosome", "Start", "End", "Barcode", "Count"]
+        else:
+            raise ValueError(f"Unexpected number of columns in fragment file {frag_file}: {ncol}")
+        
+        if whitelists is not None and sample_name in whitelists :
+            mask = frag_chunk["Barcode"].isin(whitelists[sample_name])
+            frag_chunk = frag_chunk.loc[mask] 
+
+        # Remove chromosomes
+        chrs_to_use = [f"chr{i}" for i in range(1, 23)]
+        frag_chunk = frag_chunk[
+            frag_chunk["Chromosome"].isin(chrs_to_use)
+        ]
+
+        if frag_chunk.empty:
+            continue
+
+        for bcode in frag_chunk["Barcode"] :
+            barcode_counts[bcode] += 1
+
+        # Fragment starts
+        starts_df = frag_chunk[["Chromosome", "Start", "Barcode"]].copy()
+        starts_df["End"] = starts_df["Start"]  # make it a single-point interval
+        starts_df["Count"] = 1  # optional
+
+        # Fragment ends
+        ends_df = frag_chunk[["Chromosome", "End", "Barcode"]].copy()
+        ends_df = ends_df.rename(columns={"End":"Start"})
+        ends_df["End"] = ends_df["Start"]  # single-point interval
+        ends_df["Count"] = 1
+
+
+        # Combine in chunks
+        points_df = pd.concat([starts_df, ends_df], axis=0)
+        points_pr = pr.PyRanges(points_df)
         overlaps = points_pr.join(windows_pr)
+
         # For each overlap, increment the count
-        r = overlaps.df["Barcode"].map(barcode_idx).to_numpy()
-        c = overlaps.df["tile_name"].map(tile_idx).to_numpy()
+        for barcode, tile in zip(overlaps.df["Barcode"], overlaps.df["tile_name"]):
+            cellxwindow_dict[barcode][tile] += 1
+        
+        del overlaps, points_pr    
 
-        np.add.at(cellxwindow_df, (r, c), 1)
+    # Filter barcodes based on minFrags
+    valid_barcodes = [b for b, count in barcode_counts.items() if count >= minFrags]
+    if not valid_barcodes:
+        out_log.append(f"No barcodes passed minFrags ({minFrags}) in {frag_file}")
+        return None
     
-        del overlaps
+    out_log.append(f"Unique barcodes after filtering: {len(valid_barcodes)}")
 
-    # Output
-    cellxwindow_df = pd.DataFrame(
-        cellxwindow_df,
-        index=barcodes,
-        columns=tiles
-    )
+    # Initialize final array
+    cellxwindow_arr = np.zeros((len(valid_barcodes), len(tiles)), dtype=int)
+    barcode_idx = {b: i for i, b in enumerate(valid_barcodes)}
+
+    for b in valid_barcodes:
+        i = barcode_idx[b]
+        for t, count in cellxwindow_dict[b].items():
+            j = tile_idx[t]
+            cellxwindow_arr[i, j] = count
+
+    cellxwindow_df = pd.DataFrame(cellxwindow_arr, index=valid_barcodes, columns=tiles)
+
     return cellxwindow_df
 
 
@@ -452,6 +454,7 @@ def run_aggregation(out_log, frag_file, sample_name, pickle_out, windows, whitel
     windows_r = windows[
         windows["tile_name"].isin(nonzero_windows)
     ].copy()
+    out_log.append(f"Windows removed: {len(windows) - len(windows_r)}")
 
     # Collect windows metadata
     # TODO: I don't think the script actually uses the effective length, though the blacklist used is very short so it wouldn't matter
