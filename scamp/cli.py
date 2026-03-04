@@ -172,6 +172,7 @@ def predict_ecdna(
     copy_numbers_folder: Annotated[
         str, typer.Option(help="Folder path containing anndatas, tab/comma-delimited files, or MEX folders of copy number data")
     ] = None,
+    whitelist_file: WhitelistFileArg = None,
     decision_rule: Annotated[
         float, typer.Option(help="Likelihood decision rule.")
     ] = 0.5,
@@ -192,7 +193,10 @@ def predict_ecdna(
     ] = 0.4,
     cores_per_sample: Annotated[
         int, typer.Option(help="Number of cores to allocate per sample")
-    ] = 8
+    ] = 16,
+    max_workers: Annotated[
+        int, typer.Option(help="Maximum number of workers (limit for memory bottlenecks. If not specified, becomes #cores/cores_per_sample)")
+    ] = None
 ) -> None:
     
     import multiprocessing
@@ -200,7 +204,8 @@ def predict_ecdna(
     TOTAL_CORES = multiprocessing.cpu_count()
     cores_per_sample = min(cores_per_sample, TOTAL_CORES)
     print(f"Using {cores_per_sample} cores for each sample")
-    max_workers = max(1, TOTAL_CORES // cores_per_sample)
+    if max_workers is None :
+        max_workers = max(1, TOTAL_CORES // cores_per_sample)
     print(f"Maximum workers active: {max_workers}")
     os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
     os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
@@ -229,7 +234,7 @@ def predict_ecdna(
         for file in files_list :
             logs.append(
                 executor.submit(
-                    predict.run_sample, file, output_dir, model_file, decision_rule, min_copy_number, max_percentile, 
+                    predict.run_sample, file, output_dir, model_file, whitelist_file, decision_rule, min_copy_number, max_percentile, 
                                         filter_copy_number, cluster_distance_threshold, no_plot)
                 )
             

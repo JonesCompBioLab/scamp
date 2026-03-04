@@ -25,7 +25,7 @@ from scipy.cluster.hierarchy import linkage, fcluster
 
 def predict_ecdna_from_anndata(
     out_log, anndata_file,
-    saved_model_directory,
+    saved_model_directory, whitelist_file,
     decision_rule,
     min_copy_number,
     max_percentile,
@@ -34,7 +34,7 @@ def predict_ecdna_from_anndata(
 ):
     counts_df = io.read_anndata_file(anndata_file)
     return predict(out_log, counts_df,
-    saved_model_directory,
+    saved_model_directory, whitelist_file,
     decision_rule,
     min_copy_number,
     max_percentile,
@@ -44,7 +44,7 @@ def predict_ecdna_from_anndata(
 
 def predict_ecdna_from_mex(
     out_log, mex_folder,
-    saved_model_directory,
+    saved_model_directory, whitelist_file,
     decision_rule,
     min_copy_number,
     max_percentile,
@@ -54,7 +54,7 @@ def predict_ecdna_from_mex(
     counts_df = io.read_mex_file(mex_folder)
 
     return predict(out_log, counts_df,
-    saved_model_directory,
+    saved_model_directory, whitelist_file,
     decision_rule,
     min_copy_number,
     max_percentile,
@@ -65,7 +65,7 @@ def predict_ecdna_from_mex(
 
 def predict_ecdna_from_copy_number(
     out_log, counts_file,
-    saved_model_directory,
+    saved_model_directory, whitelist_file,
     decision_rule,
     min_copy_number,
     max_percentile,
@@ -75,7 +75,7 @@ def predict_ecdna_from_copy_number(
 
     counts_df = io.read_copy_numbers_file(counts_file)
     return predict(out_log, counts_df,
-    saved_model_directory,
+    saved_model_directory, whitelist_file,
     decision_rule,
     min_copy_number,
     max_percentile,
@@ -87,6 +87,7 @@ def predict(
     out_log,
     counts_df,
     saved_model_directory,
+    whitelist_file,
     decision_rule,
     min_copy_number,
     max_percentile,
@@ -94,6 +95,10 @@ def predict(
     cluster_distance_threshold
 ) :
     model = models.SCAMP.load(saved_model_directory)
+
+    if whitelist_file:
+        whitelist = pd.read_csv(whitelist_file, header=None).iloc[:,0].values
+        counts_df = counts_df.loc[np.intersect1d(counts_df.index, whitelist)]
 
     X, genes_pass_filter = model.prepare_copy_numbers(
         counts_df.to_numpy(),
@@ -145,7 +150,7 @@ def cluster (
     return prediction_df
 
 
-def run_sample(file, output_dir, model_file, decision_rule, min_copy_number, max_percentile, 
+def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_copy_number, max_percentile, 
                filter_copy_number, cluster_distance_threshold, no_plot) :
     out_log = []
     # Detect extension
@@ -175,7 +180,7 @@ def run_sample(file, output_dir, model_file, decision_rule, min_copy_number, max
     if mode == "copynumber":
         predictions = predict_ecdna_from_copy_number(
             out_log, file,
-            model_file,
+            model_file, whitelist_file,
             decision_rule,
             min_copy_number,
             max_percentile,
@@ -185,7 +190,7 @@ def run_sample(file, output_dir, model_file, decision_rule, min_copy_number, max
     elif mode == "MEX" :
         predictions = predict_ecdna_from_mex(
             out_log, file,
-            model_file,
+            model_file, whitelist_file,
             decision_rule,
             min_copy_number,
             max_percentile,
@@ -195,7 +200,7 @@ def run_sample(file, output_dir, model_file, decision_rule, min_copy_number, max
     else :
         predictions = predict_ecdna_from_anndata(
             out_log, file,
-            model_file,
+            model_file, whitelist_file,
             decision_rule,
             min_copy_number,
             max_percentile,
@@ -212,7 +217,7 @@ def run_sample(file, output_dir, model_file, decision_rule, min_copy_number, max
     if not no_plot:
         plotting.plot_scamp_predictions_plotly(
             predictions,
-            f"{output_dir}/ecDNA_predictions.html",
+            f"{output_dir}/ecDNA_predictions_{filename}.html",
             title=f"scAmp predictions for {filename.split('/')[-1]}"
         )
 
