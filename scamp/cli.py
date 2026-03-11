@@ -40,9 +40,12 @@ def quantify_copy_numbers(
     output_directory: Annotated[
             str, typer.Argument(help="Path to directory containing ATAC fragment files")
     ] = None,     
-    fragment_directory: FragDirArg = None,
+    fragment_directory: Annotated[
+        str,
+        typer.Option(help="Path to directory containing ATAC fragment files. If only one file, use --fragment-file"),
+    ] = None,
     fragment_file: Annotated[
-            str, typer.Argument(help="Path to ATAC fragment file")
+            str, typer.Option(help="Path to ATAC fragment file")
     ] = None,
     whitelist_file: WhitelistFileArg = None,
 
