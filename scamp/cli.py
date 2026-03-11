@@ -95,9 +95,9 @@ def quantify_copy_numbers(
     if max_workers is None :
         max_workers = max(1, TOTAL_CORES // cores_per_sample)
         print(f"Maximum workers active: {max_workers}")
-    os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
-    os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
-    os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
+        os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
+        os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
+        os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
 
     from scamp import atac_cnv
 
