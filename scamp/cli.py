@@ -86,18 +86,17 @@ def quantify_copy_numbers(
 ):
     import multiprocessing
 
-    TOTAL_CORES = multiprocessing.cpu_count()
-    if fragment_directory is None :
-        cores_per_sample = TOTAL_CORES
-    else :
+    if fragment_directory is not None :
+        TOTAL_CORES = multiprocessing.cpu_count()
+
         cores_per_sample = min(cores_per_sample, TOTAL_CORES)
         print(f"Using {cores_per_sample} cores for each sample")
-    if max_workers is None :
-        max_workers = max(1, TOTAL_CORES // cores_per_sample)
-        print(f"Maximum workers active: {max_workers}")
-        os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
-        os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
-        os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
+        if max_workers is None :
+            max_workers = max(1, TOTAL_CORES // cores_per_sample)
+            print(f"Maximum workers active: {max_workers}")
+            os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
+            os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
+            os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
 
     from scamp import atac_cnv
 

@@ -57,10 +57,11 @@ def sc_cnv_pipeline(FRAGMENT_FILE, FRAGMENT_DIRECTORY, cores_per_sample, max_wor
     blacklist_path = script_dir / REFERENCE_BLACKLIST
     blacklist_path = blacklist_path.resolve()
     windows = get_windows(genome, WINDOW_SIZE, STEP_SIZE, blacklist_path)
+    print("Windows analyzed")
 
     total_time_start = time.time()
 
-    if FRAGMENT_DIRECTORY :
+    if FRAGMENT_DIRECTORY is not None :
         with ProcessPoolExecutor(max_workers = max_workers) as executor :
             logs = []
             for frag_file, sample_name in frag_dict.items() :
