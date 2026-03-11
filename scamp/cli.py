@@ -24,7 +24,7 @@ CopyNumberFileArg = Annotated[
 ]
 FragDirArg = Annotated[
     str,
-    typer.Option(help="Path to directory containing ATAC fragment files."),
+    typer.Option(help="Path to directory containing ATAC fragment files. If only one file, use --fragment-file"),
 ]
 ModelDirArg = Annotated[
     str, typer.Argument(help="Path to saved model directory.")
@@ -41,6 +41,9 @@ def quantify_copy_numbers(
             str, typer.Argument(help="Path to directory containing ATAC fragment files")
     ] = None,     
     fragment_directory: FragDirArg = None,
+    fragment_file: Annotated[
+            str, typer.Argument(help="Path to ATAC fragment file")
+    ] = None,
     whitelist_file: WhitelistFileArg = None,
 
     pickle_dir: Annotated[
@@ -81,18 +84,21 @@ def quantify_copy_numbers(
     import multiprocessing
 
     TOTAL_CORES = multiprocessing.cpu_count()
-    cores_per_sample = min(cores_per_sample, TOTAL_CORES)
-    print(f"Using {cores_per_sample} cores for each sample")
+    if fragment_directory is None :
+        cores_per_sample = TOTAL_CORES
+    else :
+        cores_per_sample = min(cores_per_sample, TOTAL_CORES)
+        print(f"Using {cores_per_sample} cores for each sample")
     if max_workers is None :
         max_workers = max(1, TOTAL_CORES // cores_per_sample)
-    print(f"Maximum workers active: {max_workers}")
+        print(f"Maximum workers active: {max_workers}")
     os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
     os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
     os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
 
     from scamp import atac_cnv
 
-    atac_cnv.sc_cnv_pipeline(fragment_directory, cores_per_sample, max_workers, whitelist_file, window_size, step_size, 
+    atac_cnv.sc_cnv_pipeline(fragment_file, fragment_directory, cores_per_sample, max_workers, whitelist_file, window_size, step_size, 
                              n_neighbors, output_directory, pickle_dir, recreate_pkl, fragment_file_key, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
                              REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz')
 

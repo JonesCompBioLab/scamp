@@ -29,7 +29,7 @@ FRAGMENT_FILE_KEY: a file that denotes the sample names for each fragment (if no
 GENES_ANNO: gene annotation path
 REFERENCE_BLACKLIST: blacklist file
 '''
-def sc_cnv_pipeline(FRAGMENT_DIRECTORY, cores_per_sample, max_workers, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, N_NEIGHBORS, OUTPUT_DIRECTORY, 
+def sc_cnv_pipeline(FRAGMENT_FILE, FRAGMENT_DIRECTORY, cores_per_sample, max_workers, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, N_NEIGHBORS, OUTPUT_DIRECTORY, 
                     PKL_OUTPUT_DIRECTORY, recreate_pkl, FRAGMENT_FILE_KEY = None, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
                     REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz') :
     os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
@@ -45,7 +45,8 @@ def sc_cnv_pipeline(FRAGMENT_DIRECTORY, cores_per_sample, max_workers, WHITELIST
 
 
     # {fragment file : sample name}
-    frag_dict = read_frag_files(FRAGMENT_DIRECTORY, FRAGMENT_FILE_KEY)
+    if FRAGMENT_DIRECTORY is not None :
+        frag_dict = read_frag_files(FRAGMENT_DIRECTORY, FRAGMENT_FILE_KEY)
 
     # Get whitelist
     whitelists = get_whitelists(WHITELIST_FILE)
@@ -59,24 +60,30 @@ def sc_cnv_pipeline(FRAGMENT_DIRECTORY, cores_per_sample, max_workers, WHITELIST
 
     total_time_start = time.time()
 
-    with ProcessPoolExecutor(max_workers = max_workers) as executor :
-        logs = []
-        for frag_file, sample_name in frag_dict.items() :
-            logs.append(
-                executor.submit(
-                    run_sample, frag_file, sample_name,
-                    OUTPUT_DIRECTORY, PKL_OUTPUT_DIRECTORY,
-                    windows, whitelists, N_NEIGHBORS, genes_pr,
-                    recreate_pkl, cores_per_sample
+    if FRAGMENT_DIRECTORY :
+        with ProcessPoolExecutor(max_workers = max_workers) as executor :
+            logs = []
+            for frag_file, sample_name in frag_dict.items() :
+                logs.append(
+                    executor.submit(
+                        run_sample, frag_file, sample_name,
+                        OUTPUT_DIRECTORY, PKL_OUTPUT_DIRECTORY,
+                        windows, whitelists, N_NEIGHBORS, genes_pr,
+                        recreate_pkl, cores_per_sample
+                    )
                 )
-            )
 
-        for log in as_completed(logs):
-            result = log.result()
-            if result is not None:
-                for line in result :
-                    print(line)
-    
+            for log in as_completed(logs):
+                result = log.result()
+                if result is not None:
+                    for line in result :
+                        print(line)
+    else :
+        run_sample(FRAGMENT_FILE, sample_name,
+                        OUTPUT_DIRECTORY, PKL_OUTPUT_DIRECTORY,
+                        windows, whitelists, N_NEIGHBORS, genes_pr,
+                        recreate_pkl, cores_per_sample)
+        
     total_time_end = time.time()
     print(f"Total time for all samples in parallel: {total_time_end - total_time_start:.2f} seconds")
 
