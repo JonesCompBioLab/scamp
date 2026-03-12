@@ -82,7 +82,7 @@ def sc_cnv_pipeline(FRAGMENT_FILE, FRAGMENT_DIRECTORY, cores_per_sample, max_wor
     else :
         path = Path(FRAGMENT_FILE)
         if '-atac' in path.name :
-                    sample_name = path.name.replace("-atac_fragments.tsv.gz", "")
+            sample_name = path.name.replace("-atac_fragments.tsv.gz", "")
         elif '_atac' in path.name :
             sample_name = path.name.replace("_atac_fragments.tsv.gz", "")
         else :

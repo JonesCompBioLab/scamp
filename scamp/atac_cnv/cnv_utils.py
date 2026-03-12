@@ -331,13 +331,14 @@ def create_cellxwindows(out_log, frag_file, sample_name, windows, whitelists, mi
             frag_chunk.columns = ["Chromosome", "Start", "End", "Barcode", "Count"]
         else:
             raise ValueError(f"Unexpected number of columns in fragment file {frag_file}: {ncol}")
+        frag_chunk["Chromosome"] = frag_chunk["Chromosome"].astype(str)
         
         if whitelists is not None and sample_name in whitelists :
             mask = frag_chunk["Barcode"].isin(whitelists[sample_name])
             frag_chunk = frag_chunk.loc[mask] 
 
         # Remove chromosomes
-        chrs_to_use = [f"chr{i}" for i in range(1, 23)]
+        chrs_to_use = [f"chr{i}" for i in range(1, 23)] + [str(i) for i in range(1, 23)]
         frag_chunk = frag_chunk[
             frag_chunk["Chromosome"].isin(chrs_to_use)
         ]
