@@ -87,10 +87,14 @@ def quantify_copy_numbers(
         typer.Option(help="Reference genome name, to pair with a blacklist. Currently only supports hg38"),
     ] = "hg38"
 ):
+    if fragment_file is None and fragment_directory is None :
+        print("Error: requires copy-numbers-file or copy-numbers-folder")
+
     import multiprocessing
 
+    TOTAL_CORES = multiprocessing.cpu_count()
+
     if fragment_directory is not None :
-        TOTAL_CORES = multiprocessing.cpu_count()
 
         cores_per_sample = min(cores_per_sample, TOTAL_CORES)
         print(f"Using {cores_per_sample} cores for each sample")
@@ -100,6 +104,9 @@ def quantify_copy_numbers(
             os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
             os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
             os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
+        
+    else :
+        cores_per_sample = TOTAL_CORES
 
     from scamp import atac_cnv
 
