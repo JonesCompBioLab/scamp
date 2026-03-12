@@ -80,13 +80,22 @@ def sc_cnv_pipeline(FRAGMENT_FILE, FRAGMENT_DIRECTORY, cores_per_sample, max_wor
                     for line in result :
                         print(line)
     else :
-        run_sample(FRAGMENT_FILE, sample_name,
+        path = Path(FRAGMENT_FILE)
+        if '-atac' in path.name :
+                    sample_name = path.name.replace("-atac_fragments.tsv.gz", "")
+        elif '_atac' in path.name :
+            sample_name = path.name.replace("_atac_fragments.tsv.gz", "")
+        else :
+            sample_name = path.name.replace("-fragments.tsv.gz", "")
+        log = run_sample(FRAGMENT_FILE, sample_name,
                         OUTPUT_DIRECTORY, PKL_OUTPUT_DIRECTORY,
                         windows, whitelists, N_NEIGHBORS, genes_pr,
                         recreate_pkl, cores_per_sample)
+        for i in log:
+            print(i)
         
     total_time_end = time.time()
-    print(f"Total time for all samples in parallel: {total_time_end - total_time_start:.2f} seconds")
+    print(f"Total time for all samples: {total_time_end - total_time_start:.2f} seconds")
 
     print("Done")
 
