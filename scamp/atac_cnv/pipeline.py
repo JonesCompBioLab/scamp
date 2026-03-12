@@ -29,7 +29,7 @@ FRAGMENT_FILE_KEY: a file that denotes the sample names for each fragment (if no
 GENES_ANNO: gene annotation path
 REFERENCE_BLACKLIST: blacklist file
 '''
-def sc_cnv_pipeline(FRAGMENT_FILE, FRAGMENT_DIRECTORY, cores_per_sample, max_workers, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, N_NEIGHBORS, OUTPUT_DIRECTORY, 
+def sc_cnv_pipeline(FRAGMENT_FILE, single_sample_name, FRAGMENT_DIRECTORY, cores_per_sample, max_workers, WHITELIST_FILE, WINDOW_SIZE, STEP_SIZE, N_NEIGHBORS, OUTPUT_DIRECTORY, 
                     PKL_OUTPUT_DIRECTORY, recreate_pkl, FRAGMENT_FILE_KEY = None, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
                     REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz') :
     os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
@@ -80,13 +80,17 @@ def sc_cnv_pipeline(FRAGMENT_FILE, FRAGMENT_DIRECTORY, cores_per_sample, max_wor
                     for line in result :
                         print(line)
     else :
+        # Get sample names
         path = Path(FRAGMENT_FILE)
-        if '-atac' in path.name :
-            sample_name = path.name.replace("-atac_fragments.tsv.gz", "")
-        elif '_atac' in path.name :
-            sample_name = path.name.replace("_atac_fragments.tsv.gz", "")
+        if single_sample_name is not None :
+            if '-atac' in path.name :
+                sample_name = path.name.replace("-atac_fragments.tsv.gz", "")
+            elif '_atac' in path.name :
+                sample_name = path.name.replace("_atac_fragments.tsv.gz", "")
+            else :
+                sample_name = path.name.replace("-fragments.tsv.gz", "")
         else :
-            sample_name = path.name.replace("-fragments.tsv.gz", "")
+            sample_name = single_sample_name
         log = run_sample(FRAGMENT_FILE, sample_name,
                         OUTPUT_DIRECTORY, PKL_OUTPUT_DIRECTORY,
                         windows, whitelists, N_NEIGHBORS, genes_pr,

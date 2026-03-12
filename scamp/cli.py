@@ -47,6 +47,9 @@ def quantify_copy_numbers(
     fragment_file: Annotated[
             str, typer.Option(help="Path to ATAC fragment file")
     ] = None,
+    sample_name: Annotated[
+            str, typer.Option(help="If only using one file, use this instead of --fragment-file-key to specify sample name if file name format does not match sample name")
+    ] = None,
     whitelist_file: WhitelistFileArg = None,
 
     pickle_dir: Annotated[
@@ -100,7 +103,7 @@ def quantify_copy_numbers(
 
     from scamp import atac_cnv
 
-    atac_cnv.sc_cnv_pipeline(fragment_file, fragment_directory, cores_per_sample, max_workers, whitelist_file, window_size, step_size, 
+    atac_cnv.sc_cnv_pipeline(fragment_file, sample_name, fragment_directory, cores_per_sample, max_workers, whitelist_file, window_size, step_size, 
                              n_neighbors, output_directory, pickle_dir, recreate_pkl, fragment_file_key, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
                              REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz')
 
@@ -207,25 +210,31 @@ def predict_ecdna(
     ] = None
 ) -> None:
     
+
+    if copy_numbers_file is None and copy_numbers_folder is None :
+        print("Error: requires copy-numbers-file or copy-numbers-folder")
+
     import multiprocessing
 
     TOTAL_CORES = multiprocessing.cpu_count()
-    cores_per_sample = min(cores_per_sample, TOTAL_CORES)
-    print(f"Using {cores_per_sample} cores for each sample")
-    if max_workers is None :
-        max_workers = max(1, TOTAL_CORES // cores_per_sample)
-    print(f"Maximum workers active: {max_workers}")
-    os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
-    os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
-    os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
+
+    if copy_numbers_folder is not None :
+        cores_per_sample = min(cores_per_sample, TOTAL_CORES)
+        print(f"Using {cores_per_sample} cores for each sample")
+        if max_workers is None :
+            max_workers = max(1, TOTAL_CORES // cores_per_sample)
+        print(f"Maximum workers active: {max_workers}")
+        os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
+        os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
+        os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
+    else :
+        max_workers = 1
+        cores_per_sample = TOTAL_CORES
 
     from scamp import predict
     from pathlib import Path
     from concurrent.futures import ProcessPoolExecutor, as_completed
     import time
-
-    if copy_numbers_file is None and copy_numbers_folder is None :
-        print("Error: requires copy-numbers-file or copy-numbers-folder")
     
     if copy_numbers_folder is None :
         # Just one file if only one provided
@@ -253,6 +262,6 @@ def predict_ecdna(
                     print(line)
     
     total_time_end = time.time()
-    print(f"Total time for all samples in parallel: {total_time_end - total_time_start:.2f} seconds")
+    print(f"Total time for all samples: {total_time_end - total_time_start:.2f} seconds")
 
     print("Done")
