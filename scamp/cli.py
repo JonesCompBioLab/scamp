@@ -81,7 +81,7 @@ def quantify_copy_numbers(
     recreate_pkl: Annotated[
         bool,
         typer.Option(help="Rewrites pkl output file (use if edits were made to the sample with the same name and output location)"),
-    ] = False,
+    ] = True,
     reference_genome_name: Annotated[
         str,
         typer.Option(help="Reference genome name, to pair with a blacklist. Currently only supports hg38"),
@@ -261,6 +261,7 @@ def predict_ecdna(
                     predict.run_sample, file, output_dir, model_file, whitelist_file, decision_rule, min_copy_number, max_percentile, 
                                         filter_copy_number, cluster_distance_threshold, no_plot)
                 )
+            print(f'Sumbitted {file}')
             
         for log in as_completed(logs):
             result = log.result()

@@ -506,7 +506,9 @@ def run_aggregation(out_log, frag_file, sample_name, pickle_out, windows, whitel
         
         # find nearest neighbors by GC
         distances = np.abs(gc[i] - gc)
-        nn_idx = np.argsort(distances)[1 : neighbors+1]
+        sorted_idx = np.argsort(distances)
+        sorted_idx = sorted_idx[sorted_idx != i]
+        nn_idx = sorted_idx[:neighbors]
 
         # background
         bg = X[nn_idx, :]

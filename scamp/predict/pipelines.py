@@ -154,6 +154,7 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
                filter_copy_number, cluster_distance_threshold, no_plot) :
     out_log = []
     # Detect extension
+    out_log.append(f'Running {file}')
     p = Path(file)
     if os.path.isdir(p) :
         has_matrix = any(p.glob("matrix.mtx*"))
