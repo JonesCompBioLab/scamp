@@ -1,4 +1,7 @@
-###############################################
+"""
+Functions to prepare visualization inputs.
+"""
+
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -7,13 +10,30 @@ import anndata as ad
 import numpy as np
 
 def read_adata(anndata_file) :
+    """Read in anndata file.
+
+    Args:
+        anndata_file: Filename of anndata h5ad.
+    """
     return ad.read_h5ad(anndata_file)
 
-# Get all the correct settings for visualization
-# Returns: None
-#          writes anndata to file [temp_folder]/annotated_anndata.h5ad
-#          writes gene set data to file [temp_folder]/ecDNA_gene_set.csv
 def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_threshold, umap_name, expression_adata) :
+    """Prepare anndata and gene set files for visualization.
+
+    Writes annotated anndata to [temp_folder]/annotated_anndata.h5ad and gene
+    set data to [temp_folder]/ecDNA_gene_set.csv.
+
+    Args:
+        adata: Copy-number anndata object to annotate.
+        scamp_tsv: Path to scAmp predictions TSV file.
+        temp_folder: Directory where visualization files are written.
+        cn_threshold: Copy-number threshold used to define ecDNA-positive cells.
+        cn_percentile_threshold: Percentile threshold used to define
+            ecDNA-positive cells.
+        umap_name: Name of the embedding to use for visualization.
+        expression_adata: Expression anndata object used for visualization
+            values and embeddings.
+    """
     
     # Making gene set
     scamp = pd.read_csv(scamp_tsv, sep = "\t")
@@ -34,7 +54,7 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
 
             # gene clusters
             if "cluster" in row :
-                new_row = {"gene_set_name" : f"ecDNA Cluster {row["cluster"]}", "gene_set_description" : f"Predicted ecDNA by scAmp, cluster {row["cluster"]}", "gene_symbol" : gene, "gene_description" : ""}
+                new_row = {"gene_set_name" : f"ecDNA Cluster {row['cluster']}", "gene_set_description" : f"Predicted ecDNA by scAmp, cluster {row['cluster']}", "gene_symbol" : gene, "gene_description" : ""}
                 gene_set_df.loc[len(gene_set_df)] = new_row
         
     
@@ -53,9 +73,19 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
 
     adata.write(f"{temp_folder}/annotated_anndata.h5ad")
 
-# Adds cell sets to anndata
-# Returns: None, modifies adata
 def add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold):
+    """Add ecDNA-positive cell annotations to anndata.
+
+    Adds per-gene ecDNA columns and a total ecDNA-positive gene count to
+    adata.obs.
+
+    Args:
+        adata: Copy-number anndata object to annotate.
+        gene_set_df: Dataframe containing ecDNA gene set rows.
+        cn_threshold: Copy-number threshold used to define ecDNA-positive cells.
+        cn_percentile_threshold: Percentile threshold used to define
+            ecDNA-positive cells.
+    """
     # Get list of genes
     gene_list = gene_set_df['gene_symbol'].tolist()
 
@@ -84,9 +114,16 @@ def add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold):
         adata = adata[:, to_keep].copy()
 
 
-# Converts expression tsv data into anndata
-# Returns: expression anndata
 def setup_expression(expression_data, cn_adata) :
+    """Read expression data into anndata.
+
+    Reads a CSV or TSV expression matrix and keeps genes present in the
+    copy-number anndata object.
+
+    Args:
+        expression_data: Path to expression CSV or TSV file.
+        cn_adata: Copy-number anndata object used to subset genes.
+    """
     # Detect file extension
     expression_file_ext = expression_data.split('.')[-1]
     if expression_file_ext == "csv" :
@@ -103,9 +140,15 @@ def setup_expression(expression_data, cn_adata) :
     exp_adata = ad.AnnData(exression_df_subset)
     return exp_adata
 
-# Converts copy number tsv to anndata
-# Returns: copy number anndata
 def setup_copynumber(copy_number_file) :
+    """Read copy-number data into anndata.
+
+    Reads a CSV or TSV copy-number matrix and returns an anndata object for
+    downstream visualization setup.
+
+    Args:
+        copy_number_file: Path to copy-number CSV or TSV file.
+    """
     # Detect file extension
     copy_number_file_ext = copy_number_file.split('.')[-1]
     if copy_number_file_ext == "csv" :
@@ -128,11 +171,17 @@ def setup_copynumber(copy_number_file) :
 
     return adata
 
-# Create a umap if one doesn't exist
-# Returns: None
-#          Edits input adata
-#          If new umap created, new anndata saved in {temp_folder}/umap_anndata.h5ad
 def get_umap(umap_name, adata, temp_folder) :
+    """Read or create a UMAP embedding.
+
+    Uses an existing embedding when present, otherwise computes X_umap and
+    writes the updated anndata to [temp_folder]/umap_anndata.h5ad.
+
+    Args:
+        umap_name: Name of the embedding in adata.obsm.
+        adata: AnnData object to inspect or update.
+        temp_folder: Directory where generated UMAP anndata is written.
+    """
     # If we found existing umap
     if umap_name in list(adata.obsm.keys()):
         print(f"Found UMAP in {umap_name}...")
