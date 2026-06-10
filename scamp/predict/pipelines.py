@@ -118,6 +118,11 @@ def cluster (
     # Get each ecDNA's copy numbers as a vector
     ecDNA_genes = prediction_df.loc[prediction_df["pred"], "gene"].tolist()
 
+    if len(ecDNA_genes) == 0 :
+        prediction_df["cluster"] = -1
+        print("No ecDNA detected in sample")
+        return prediction_df
+
     counts_df_ecDNA = counts_df[ecDNA_genes]
     gene_vectors = counts_df_ecDNA.T
 

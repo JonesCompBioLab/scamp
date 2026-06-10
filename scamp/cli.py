@@ -20,6 +20,7 @@ from scamp.mixins import CLIError
 from scamp import predict
 from scamp import plotting
 from scamp import vis
+from scamp import atac_cnv
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
@@ -48,10 +49,16 @@ WhitelistFileArg = Annotated[
 
 @scamp_app.command(name="atac-cnv", help="Quantify single-cell copy-numbers.")
 def quantify_copy_numbers(
-    output_directory: OutputDirArg,
-    copy_number_directory: CopyNumberRangesDirArg = None,
+    output_directory: Annotated[
+            str, typer.Argument(help="Path to directory containing ATAC fragment files")
+    ] = None,     
     fragment_directory: FragDirArg = None,
     whitelist_file: WhitelistFileArg = None,
+
+    pickle_dir: Annotated[
+        str, typer.Option(help="Path to directory of pkl cell by window counts. pkl files will save here. If pkl files are " \
+        "present, skips the cell by window creation step")
+    ] = None,    
     window_size: Annotated[
         int, typer.Option(help="Base pair width for genomic windows")
     ] = 3000000,
@@ -65,46 +72,53 @@ def quantify_copy_numbers(
             help="Number of genomic windows to compare against for normalization"
         ),
     ] = 200,
-    reference_genome_name: Annotated[
-        str,
-        typer.Option(help="Reference genome name, to pair with a blacklist."),
-    ] = "hg38",
+    fragment_file_key: Annotated[
+        str, typer.Argument(help="Path to tab separated two column list of matched file names and sample names")
+    ] = None
+    # reference_genome_name: Annotated[
+    #     str,
+    #     typer.Option(help="Reference genome name, to pair with a blacklist. Currently only supports hg38"),
+    # ] = "hg38",
 ):
 
-    binned_copy_number_script = (
-        f"{os.path.dirname(__file__)}/scripts/scATAC_CNV.R"
-    )
-    gene_aggregation_script = (
-        f"{os.path.dirname(__file__)}/scripts/aggregate_gene_copy_number.R"
-    )
+    atac_cnv.sc_cnv_pipeline(fragment_directory, whitelist_file, window_size, step_size, n_neighbors, output_directory, 
+                    pickle_dir, fragment_file_key, GENES_ANNO = '../reference/geneAnnohg38.tsv', 
+                    REFERENCE_BLACKLIST = '../reference/hg38.blacklist.bed.gz')
 
-    # compute copy-numbers in genomic windows
-    if fragment_directory:
+    # binned_copy_number_script = (
+    #     f"{os.path.dirname(__file__)}/scripts/scATAC_CNV.R"
+    # )
+    # gene_aggregation_script = (
+    #     f"{os.path.dirname(__file__)}/scripts/aggregate_gene_copy_number.R"
+    # )
+
+    # # compute copy-numbers in genomic windows
+    # if fragment_directory:
         
-        if whitelist_file is None:
-            raise CLIError("If starting the copy-number pipeline from the " 
-                            "beginning, please provide a whitelist fiel")
-        print(
-            f"Binning copy-numbers from {fragment_directory} in windows "
-            f"of size {window_size}..."
-        )
-        os.system(
-            f"Rscript {binned_copy_number_script} "
-            f"{fragment_directory} {window_size} "
-            f"{step_size} {n_neighbors} "
-            f"{whitelist_file} {output_directory} "
-            f"{reference_genome_name} {os.path.dirname(__file__)}"
-        )
+    #     if whitelist_file is None:
+    #         raise CLIError("If starting the copy-number pipeline from the " 
+    #                         "beginning, please provide a whitelist fiel")
+    #     print(
+    #         f"Binning copy-numbers from {fragment_directory} in windows "
+    #         f"of size {window_size}..."
+    #     )
+    #     os.system(
+    #         f"Rscript {binned_copy_number_script} "
+    #         f"{fragment_directory} {window_size} "
+    #         f"{step_size} {n_neighbors} "
+    #         f"{whitelist_file} {output_directory} "
+    #         f"{reference_genome_name} {os.path.dirname(__file__)}"
+    #     )
 
-    # bin by gene
-    if not copy_number_directory:
-        copy_number_directory = output_directory
+    # # bin by gene
+    # if not copy_number_directory:
+    #     copy_number_directory = output_directory
 
-    print(f"Aggregating together copy-numbers across genes...")
-    os.system(
-        f"Rscript {gene_aggregation_script} "
-        f"{copy_number_directory} {output_directory} {reference_genome_name}"
-    )
+    # print(f"Aggregating together copy-numbers across genes...")
+    # os.system(
+    #     f"Rscript {gene_aggregation_script} "
+    #     f"{copy_number_directory} {output_directory} {reference_genome_name}"
+    # )
 
 @scamp_app.command(name="visualize", help="Visualize ecDNA results with cellxgene")
 def visualize(
@@ -234,7 +248,7 @@ def predict_ecdna(
             cluster_distance_threshold
         )
 
-    os.makedirs(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
 
     # Output predictions and visualizations
     predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
