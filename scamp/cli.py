@@ -49,7 +49,7 @@ WhitelistFileArg = Annotated[
 
 
 @scamp_app.command(name="atac-cnv-legacy", help="Quantify single-cell copy-numbers.")
-def quantify_copy_numbers(
+def quantify_copy_numbers_legacy(
     output_directory: OutputDirArg,
     copy_number_directory: CopyNumberRangesDirArg = None,
     fragment_directory: FragDirArg = None,
