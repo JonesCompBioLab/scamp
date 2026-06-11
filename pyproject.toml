@@ -35,11 +35,8 @@ dependencies = [
     "anndata>=0.11",
     "numpy",
     "pandas",
-<<<<<<< HEAD
     "pyranges",
-=======
     "plotly",
->>>>>>> origin/main
     "rich>=12.0.0",
     "scikit-learn>=0.21.2",
     "scipy",
