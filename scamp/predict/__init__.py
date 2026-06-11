@@ -1,1 +1,1 @@
-from .pipelines import predict_ecdna_from_copy_number
+from .pipelines import run_sample
