@@ -4,6 +4,7 @@ suppressMessages(library(grid))
 suppressMessages(library(dplyr))
 suppressMessages(library(data.table))
 suppressMessages(library(SummarizedExperiment))
+suppressMessages(library(R.utils))
 set.seed(1)
 
 "%ni%" <- Negate("%in%")
@@ -24,7 +25,12 @@ source(paste0(
 ))
 
 frag_files <- readFragFiles(FRAGS_DIR)
-names(frag_files) <- names(frag_files) %>% gsub('_atac.*','',.) %>% gsub('.*/','',.)
+
+if (grepl("atac", names(frag_files)[[1]], fixed=T)) {
+    names(frag_files) <- names(frag_files) %>% gsub('_atac.*','',.) %>% gsub('.*/','',.)
+} else {
+    names(frag_files) <- names(frag_files) %>% gsub('.fragments.*','',.) %>% gsub('.*/','',.)
+}
 
 whitelist <- read.table(WHITELIST, sep='\t', header=F, comment.char='')[,1]
 
@@ -43,7 +49,7 @@ if (REFERENCE == 'hg19') {
 } else if (REFERENCE == 'mm10') {
     suppressMessages(library(BSgenome.Mmusculus.UCSC.mm10))
     blacklist <- rtracklayer::import.bed(
-        paste0(ROOT_DIR, '/reference/mm10.blacklist.bed.gz')
+        paste0(ROOT_DIR, '/reference/mm10-blacklist.v2.bed.gz')
     )
     genome <- BSgenome.Mmusculus.UCSC.mm10
 } else {

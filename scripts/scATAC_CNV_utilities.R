@@ -76,40 +76,36 @@ fragFiles2cnaObj <- function(frag_files,
                              force = TRUE,
                              remove = c("chrM","chrX","chrY"),
                              convertArrowFile = FALSE,
-                             addRG = TRUE,
+                             addRG = FALSE,
                              max_granges_length = 4e+7){
     
     for (sample_name in names(frag_files)) {
-        skip_boolean <- FALSE
-        tryCatch({
 
-            message(paste0("CNA object being generated for ", sample_name))
-            fragments <- readFragments(frag_files[sample_name], convertArrowFile=convertArrowFile)
-            if (addRG) {
-                fragments$RG <- paste0(sample_name, "#", fragments$RG)
-            }
+        message(paste0("CNA object being generated for ", sample_name))
+        fragments <- readFragments(frag_files[sample_name], convertArrowFile=convertArrowFile)
+        if (addRG) {
+            fragments$RG <- paste0(sample_name, "#", fragments$RG)
+        }
 	    if (!is.null(whitelist)) {
-            	fragments <- fragments[mcols(fragments)[,"RG"] %in% whitelist]
+            fragments <- fragments[mcols(fragments)[,"RG"] %in% whitelist]
 	    }
                 
-            split_into <- ceiling( length(fragments) / max_granges_length )
-            chunks <- divideIntoChunks(unique(fragments$RG), split_into)
-            cnaObj <- lapply(chunks, function(chunk){
-                fragments_chunk <- fragments %>% subset(RG %in% chunk)
-                cnaObj <- scCNA(windows, 
-                                fragments_chunk, 
-                                neighbors = neighbors, 
-                                LFC = 1.5, 
-                                FDR = 0.1, 
-                                force = force, 
-                                remove = remove)
-                return(cnaObj)
-            }) %>% do.call(cbind, .)
-            cnaObj <- addCNs(cnaObj)
-            saveRDS(cnaObj, file = paste0(dir, '/', 'cnaObj_', sample_name, '.rds'))
+        split_into <- ceiling( length(fragments) / max_granges_length )
+        chunks <- divideIntoChunks(unique(fragments$RG), split_into)
+        cnaObj <- lapply(chunks, function(chunk){
+            fragments_chunk <- fragments %>% subset(RG %in% chunk)
+            cnaObj <- scCNA(windows, 
+                            fragments_chunk, 
+                            neighbors = neighbors, 
+                            LFC = 1.5, 
+                            FDR = 0.1, 
+                            force = force, 
+                            remove = remove)
+            return(cnaObj)
+        }) %>% do.call(cbind, .)
+        cnaObj <- addCNs(cnaObj)
+        saveRDS(cnaObj, file = paste0(dir, '/', 'cnaObj_', sample_name, '.rds'))
 
-        }, error = function(cond) { skip_boolean <<- TRUE } )
-        if (skip_boolean) { next }        
     }    
     
     cnaObj_files <- list.files(dir, pattern = c("cnaObj_.*.rds$"), full.names = TRUE) %>%

@@ -14,7 +14,7 @@ You can install scAmp by cloning this directory and running `pip install .` This
 
 In addition, if you'd like to use the ATAC CNV module, you should install the following R packages:
 
-* [ArchR](https://github.com/GreenleafLab/ArchR)
+* Rutils
 * SummarizedExperiment
 * dplyr
 
@@ -24,7 +24,9 @@ To use the visualization module, you should run `pip install cellxgene`
 
 ## Running scAmp from the command line
 
-You can invoke `scamp` modules from the command line by running
+For a basic tutorial of the `scamp` classification pipeline, you can find an example [here](notebooks/intro_to_scamp.ipynb).
+
+You can also invoke `scamp` modules from the command line by running
 
 `scamp [module] [arguments]`
 
@@ -63,3 +65,9 @@ from scamp import models
 saved_model_path = "./pretrained_models/scamp_model_1.0"
 pretrained_model = models.SCAMP.load(pretrained_model_path)
 ```
+
+## Citing scAmp
+
+You can cite scAmp with the following paper:
+
+Jones MG, Weiser NE, Hung KL, Yan X, Agarwal S, Luebeck J, Gnanasekar A, Howitt BE, Curtis EJ, Yu K, Rose JC, Kraft K, Amiri VVP, Satpathy L, Bafna V, Mischel PS, Chang HY. scAmp analyzes focal gene amplifications at single-cell resolution. bioRxiv [Preprint]. 2026 Feb 15:2026.02.14.705928. doi: 10.64898/2026.02.14.705928. PMID: 41726899; PMCID: PMC12919090.

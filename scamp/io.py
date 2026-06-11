@@ -32,7 +32,11 @@ def read_copy_numbers_file(filename, n_threads: int = None):
     elif ext == "tsv" :
         sep = '\t'
 
+<<<<<<< HEAD
     counts_df = pd.read_csv(filename, sep=sep, index_col= 0)
+=======
+    counts_df = pd.read_csv(filename, sep='\t', index_col=0)
+>>>>>>> origin/main
 
     return counts_df
 

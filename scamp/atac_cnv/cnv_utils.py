@@ -180,7 +180,8 @@ def get_whitelists(WHITELIST_FILE):
             # Ensure format
             if not "#" in line:
                 print(
-                    "Warning: whitelist format should be [sample_name]#[barcode], using all cells as whitelist"
+                    "Warning: whitelist format should be [sample_name]#[barcode], "
+                    "using all cells as whitelist"
                 )
                 return None
             whitelists[line.split("#")[0]].append(line.split("#")[1])

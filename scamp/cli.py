@@ -6,13 +6,14 @@ from __future__ import annotations
 
 import os
 
-import warnings
-
-warnings.filterwarnings("ignore", category=FutureWarning)
 from typing import Annotated, Union
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+import scanpy as sc
 import typer
 
-from scamp import atac_cnv
+from scamp import atac_cnv, vis
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
@@ -46,6 +47,68 @@ WhitelistFileArg = Annotated[
     str, typer.Option(help="File path to cellBC whitelist.")
 ]
 
+
+@scamp_app.command(name="atac-cnv-legacy", help="Quantify single-cell copy-numbers.")
+def quantify_copy_numbers(
+    output_directory: OutputDirArg,
+    copy_number_directory: CopyNumberRangesDirArg = None,
+    fragment_directory: FragDirArg = None,
+    whitelist_file: WhitelistFileArg = None,
+    window_size: Annotated[
+        int, typer.Option(help="Base pair width for genomic windows")
+    ] = 3000000,
+    step_size: Annotated[
+        int,
+        typer.Option(help="Step size from previous genomic window."),
+    ] = 1000000,
+    n_neighbors: Annotated[
+        int,
+        typer.Option(
+            help="Number of genomic windows to compare against for normalization"
+        ),
+    ] = 200,
+    reference_genome_name: Annotated[
+        str,
+        typer.Option(help="Reference genome name, to pair with a blacklist."),
+    ] = "hg38",
+):
+    print('Warning: This is a legacy command and may be deprecated in future '
+        'versions in favor of the python-based implementation `atac-cnv`.')
+
+    binned_copy_number_script = (
+        f"{os.path.dirname(__file__)}/scripts/scATAC_CNV.R"
+    )
+    gene_aggregation_script = (
+        f"{os.path.dirname(__file__)}/scripts/aggregate_gene_copy_number.R"
+    )
+
+    # compute copy-numbers in genomic windows
+    if fragment_directory:
+        
+        if whitelist_file is None:
+            raise CLIError("If starting the copy-number pipeline from the " 
+                            "beginning, please provide a whitelist file")
+        print(
+            f"Binning copy-numbers from {fragment_directory} in windows "
+            f"of size {window_size}..."
+        )
+        os.system(
+            f"Rscript {binned_copy_number_script} "
+            f"{fragment_directory} {window_size} "
+            f"{step_size} {n_neighbors} "
+            f"{whitelist_file} {output_directory} "
+            f"{reference_genome_name} {os.path.dirname(__file__)}"
+        )
+
+    # bin by gene
+    if not copy_number_directory:
+        copy_number_directory = output_directory
+
+    print(f"Aggregating together copy-numbers across genes...")
+    os.system(
+        f"Rscript {gene_aggregation_script} "
+        f"{copy_number_directory} {output_directory} {reference_genome_name} {os.path.dirname(__file__)}"
+    )
 
 @scamp_app.command(name="atac-cnv", help="Quantify single-cell copy-numbers.")
 def quantify_copy_numbers(
@@ -156,7 +219,6 @@ def quantify_copy_numbers(
         REFERENCE_BLACKLIST="../reference/hg38.blacklist.bed.gz",
     )
 
-
 @scamp_app.command(
     name="visualize", help="Visualize ecDNA results with cellxgene"
 )
@@ -193,8 +255,6 @@ def visualize(
         ),
     ] = 100,
 ):
-    from scamp import vis
-    import scanpy as sc
 
     # Where the files will go
     os.makedirs(temp_folder, exist_ok=True)
@@ -243,19 +303,12 @@ def visualize(
 def predict_ecdna(
     output_dir: OutputDirArg,
     model_file: ModelDirArg,
-    copy_numbers_file: Annotated[
-        str,
-        typer.Option(
-            help="File path to anndata, tab/comma-delimited file, or MEX folder of copy number data"
-        ),
-    ] = None,
-    copy_numbers_folder: Annotated[
-        str,
-        typer.Option(
-            help="Folder path containing anndatas, tab/comma-delimited files, or MEX folders of copy number data"
-        ),
-    ] = None,
+    copy_numbers_file: CopyNumberFileArg = None,
+    anndata_file: AnnDataFileArg = None,
     whitelist_file: WhitelistFileArg = None,
+    mode: Annotated[
+        str, typer.Option(help="Mode: (currently only offering `copynumber`)")
+    ] = "copynumber",
     decision_rule: Annotated[
         float, typer.Option(help="Likelihood decision rule.")
     ] = 0.5,
@@ -266,93 +319,35 @@ def predict_ecdna(
         float, typer.Option(help="Maximum percentile to cap copy-numbers.")
     ] = 99.0,
     filter_copy_number: Annotated[
-        float,
-        typer.Option(
-            help="Drop genes whose mean copy-number is below this threshold."
-        ),
+         float, typer.Option(help="Drop genes whose mean copy-number is below this threshold.")
     ] = 2.5,
     no_plot: Annotated[
         float, typer.Option(help="Suppress plotting functionality.")
-    ] = False,
-    cluster_distance_threshold: Annotated[
-        float,
-        typer.Option(help="Distance threshold for hierarchical clustering."),
-    ] = 0.4,
-    cores_per_sample: Annotated[
-        int, typer.Option(help="Number of cores to allocate per sample")
-    ] = 16,
-    max_workers: Annotated[
-        int,
-        typer.Option(
-            help="Maximum number of workers (limit for memory bottlenecks. If not specified, becomes #cores/cores_per_sample)"
-        ),
-    ] = None,
+    ] = False
 ) -> None:
 
     if copy_numbers_file is None and copy_numbers_folder is None:
         print("Error: requires copy-numbers-file or copy-numbers-folder")
 
-    import multiprocessing
+    if mode == "copynumber":
+        predictions = predict.predict_ecdna_from_copy_number(
+            copy_numbers_file,
+            model_file,
+            decision_rule,
+            min_copy_number,
+            max_percentile,
+            filter_copy_number,
+            whitelist_file
+        )
 
-    TOTAL_CORES = multiprocessing.cpu_count()
+        os.makedirs(output_dir)
 
-    if copy_numbers_folder is not None:
-        cores_per_sample = min(cores_per_sample, TOTAL_CORES)
-        print(f"Using {cores_per_sample} cores for each sample")
-        if max_workers is None:
-            max_workers = max(1, TOTAL_CORES // cores_per_sample)
-        print(f"Maximum workers active: {max_workers}")
-        os.environ["OMP_NUM_THREADS"] = str(cores_per_sample)
-        os.environ["MKL_NUM_THREADS"] = str(cores_per_sample)
-        os.environ["OPENBLAS_NUM_THREADS"] = str(cores_per_sample)
-    else:
-        max_workers = 1
-        cores_per_sample = TOTAL_CORES
-
-    from scamp import predict
-    from pathlib import Path
-    from concurrent.futures import ProcessPoolExecutor, as_completed
-    import time
-
-    if copy_numbers_folder is None:
-        # Just one file if only one provided
-        files_list = []
-        files_list.append(copy_numbers_file)
-    else:
-        data_dir = Path(copy_numbers_folder).resolve()
-        files_list = [str(f) for f in data_dir.glob("*")]
-
-    # Parallelization
-    total_time_start = time.time()
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        logs = []
-        for file in files_list:
-            logs.append(
-                executor.submit(
-                    predict.run_sample,
-                    file,
-                    output_dir,
-                    model_file,
-                    whitelist_file,
-                    decision_rule,
-                    min_copy_number,
-                    max_percentile,
-                    filter_copy_number,
-                    cluster_distance_threshold,
-                    no_plot,
-                )
+        predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
+        if not no_plot:
+            plotting.plot_scamp_predictions_plotly(
+                predictions,
+                f"{output_dir}/ecDNA_predictions.html",
+                title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
             )
-            print(f"Sumbitted {file}")
 
-        for log in as_completed(logs):
-            result = log.result()
-            if result is not None:
-                for line in result:
-                    print(line)
-
-    total_time_end = time.time()
-    print(
-        f"Total time for all samples: {total_time_end - total_time_start:.2f} seconds"
-    )
-
-    print("Done")
+        print(f"Output written out to {output_dir}.")
