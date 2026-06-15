@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 
-from typing import Annotated, Union
+from typing import Annotated, Literal, Union
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -174,11 +174,11 @@ def quantify_copy_numbers(
         ),
     ] = True,
     reference_genome_name: Annotated[
-        str,
+        Literal["hg38", "hg19", "mm10"],
         typer.Option(
-            help="Reference genome name, to pair with a blacklist. Currently only supports hg38"
+            help="Reference genome name, to pair with a blacklist."
         ),
-    ] = "hg38",
+    ] = "hg38"
 ):
     if fragment_file is None and fragment_directory is None:
         print("Error: requires copy-numbers-file or copy-numbers-folder")
@@ -215,8 +215,7 @@ def quantify_copy_numbers(
         pickle_dir,
         recreate_pkl,
         fragment_file_key,
-        GENES_ANNO="../reference/geneAnnohg38.tsv",
-        REFERENCE_BLACKLIST="../reference/hg38.blacklist.bed.gz",
+        reference_genome_name
     )
 
 @scamp_app.command(

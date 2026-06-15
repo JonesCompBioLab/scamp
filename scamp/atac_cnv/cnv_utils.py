@@ -16,30 +16,30 @@ from scipy.sparse import csr_matrix
 import time
 
 
-def get_hg38_fasta(cache_dir=f"../reference/.fa_genomes"):
-    """Read in hg38 FASTA genome.
+def get_assembly_fasta(ASSEMBLY, cache_dir=f"../reference/.fa_genomes"):
+    """Read in the FASTA genome.
 
-    Downloads and decompresses the hg38 FASTA file if it is not already
+    Downloads and decompresses the FASTA file if it is not already
     present in the cache directory, then returns a pyfaidx Fasta object.
 
     Args:
-        cache_dir: Directory where the hg38 FASTA and index files are cached.
+        cache_dir: Directory where the FASTA and index files are cached.
     """
-    # hg38 location
-    HG38_URL = (
-        "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz"
+    # assembly location
+    GENOME_URL = (
+        f"https://hgdownload.soe.ucsc.edu/goldenPath/{ASSEMBLY}/bigZips/{ASSEMBLY}.fa.gz"
     )
 
     cache_dir = os.path.expanduser(cache_dir)
     os.makedirs(cache_dir, exist_ok=True)
 
-    fa_gz = os.path.join(cache_dir, "hg38.fa.gz")
-    fa = os.path.join(cache_dir, "hg38.fa")
+    fa_gz = os.path.join(cache_dir, f"{ASSEMBLY}.fa.gz")
+    fa = os.path.join(cache_dir, f"{ASSEMBLY}.fa")
 
     # download fasta file as needed
     if not os.path.exists(fa):
-        print("Downloading hg38 genome (one-time)...")
-        urllib.request.urlretrieve(HG38_URL, fa_gz)
+        print(f"Downloading {ASSEMBLY} genome (one-time)...")
+        urllib.request.urlretrieve(GENOME_URL, fa_gz)
 
         import gzip, shutil
 

@@ -30,8 +30,9 @@ def sc_cnv_pipeline(
     PKL_OUTPUT_DIRECTORY,
     recreate_pkl,
     FRAGMENT_FILE_KEY=None,
-    GENES_ANNO="../reference/geneAnnohg38.tsv",
-    REFERENCE_BLACKLIST="../reference/hg38.blacklist.bed.gz",
+    ASSEMBLY="hg38"
+    # GENES_ANNO="../reference/geneAnnohg38.tsv",
+    # REFERENCE_BLACKLIST="../reference/hg38.blacklist.bed.gz",
 ):
     """Run the scATAC copy-number pipeline.
 
@@ -65,10 +66,10 @@ def sc_cnv_pipeline(
     # Download genome & read in genes
     script_dir = Path(__file__).resolve().parent
 
-    gene_anno_path = script_dir / GENES_ANNO
+    gene_anno_path = script_dir / f"../reference/geneAnno{ASSEMBLY}.tsv"
     gene_anno_path = gene_anno_path.resolve()
-    genome_path = script_dir / "../reference/.fa_genomes"
-    genome = cnv_utils.get_hg38_fasta(genome_path)
+    genome_path = script_dir / f"../reference/.fa_genomes_{ASSEMBLY}"
+    genome = cnv_utils.get_assembly_fasta(ASSEMBLY, genome_path)
     genes_pr = cnv_utils.get_gene_pr(gene_anno_path)
 
     # {fragment file : sample name}
@@ -80,7 +81,7 @@ def sc_cnv_pipeline(
 
     # Create windows with blacklist
     print("Getting windows")
-    blacklist_path = script_dir / REFERENCE_BLACKLIST
+    blacklist_path = script_dir / f"../reference/{ASSEMBLY}.blacklist.bed.gz"
     blacklist_path = blacklist_path.resolve()
     windows = cnv_utils.get_windows(genome, WINDOW_SIZE, STEP_SIZE, blacklist_path)
     print("Windows analyzed")
