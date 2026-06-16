@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import scanpy as sc
 import typer
 
-from scamp import atac_cnv, vis
+from scamp import atac_cnv, vis, plotting, predict
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
