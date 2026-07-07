@@ -174,7 +174,7 @@ def quantify_copy_numbers(
         ),
     ] = True,
     reference_genome_name: Annotated[
-        Literal["hg38", "hg19", "mm10"],
+        Literal["hg38", "hg19", "mm10", "mm39"],
         typer.Option(
             help="Reference genome name, to pair with a blacklist."
         ),

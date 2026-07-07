@@ -31,8 +31,6 @@ def sc_cnv_pipeline(
     recreate_pkl,
     FRAGMENT_FILE_KEY=None,
     ASSEMBLY="hg38"
-    # GENES_ANNO="../reference/geneAnnohg38.tsv",
-    # REFERENCE_BLACKLIST="../reference/hg38.blacklist.bed.gz",
 ):
     """Run the scATAC copy-number pipeline.
 
@@ -81,7 +79,7 @@ def sc_cnv_pipeline(
 
     # Create windows with blacklist
     print("Getting windows")
-    blacklist_path = script_dir / f"../reference/{ASSEMBLY}.blacklist.bed.gz"
+    blacklist_path = script_dir / f"../reference/{ASSEMBLY}-blacklist.bed.gz"
     blacklist_path = blacklist_path.resolve()
     windows = cnv_utils.get_windows(genome, WINDOW_SIZE, STEP_SIZE, blacklist_path)
     print("Windows analyzed")
@@ -131,6 +129,7 @@ def sc_cnv_pipeline(
             OUTPUT_DIRECTORY,
             PKL_OUTPUT_DIRECTORY,
             windows,
+            WINDOW_SIZE,
             whitelists,
             N_NEIGHBORS,
             genes_pr,
@@ -154,6 +153,7 @@ def run_sample(
     OUTPUT_DIRECTORY,
     PKL_OUTPUT_DIRECTORY,
     windows,
+    window_size,
     whitelists,
     N_NEIGHBORS,
     genes_pr,
@@ -205,6 +205,7 @@ def run_sample(
             sample_name,
             pickle_out,
             windows,
+            window_size,
             whitelists,
             N_NEIGHBORS,
             bgdCN=2,

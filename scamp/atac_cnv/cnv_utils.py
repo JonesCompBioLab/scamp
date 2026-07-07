@@ -14,6 +14,7 @@ from collections import defaultdict
 import pickle
 from scipy.sparse import csr_matrix
 import time
+import sys
 
 
 def get_assembly_fasta(ASSEMBLY, cache_dir=f"../reference/.fa_genomes"):
@@ -148,14 +149,89 @@ def make_windows(
         temp_windows_m_blacklist = temp_windows_m_blacklist.df.copy()
 
         # Calculate GC, AT fractions
-        temp_windows_m_blacklist_fracs = calculate_fractions(
-            temp_windows_m_blacklist, prefix_sums
+        temp_windows_m_blacklist = calculate_counts(
+            temp_windows_m_blacklist,
+            prefix_sums,
         )
-        final_dfs.append(temp_windows_m_blacklist_fracs)
 
-    windows_m_blacklist_fracs = pd.concat(final_dfs, ignore_index=True)
+        final_dfs.append(temp_windows_m_blacklist)
 
-    return windows_m_blacklist_fracs
+    windows_m_blacklist = pd.concat(final_dfs, ignore_index=True)
+
+    return windows_m_blacklist
+
+
+def combine_split_windows(
+    temp_windows_m_blacklist, window_size, cellxwindows_df
+) :
+    """Combine windows split by blacklists.
+
+    Joins windows that originate from the same split section, and calculates
+    GC and N fractions. Also merges windows from the same split section in
+    cellxwindows.
+
+    Args:
+        temp_windows_m_blacklist: Windows to merge.
+        window_size: Width of each window in bases.
+        cellxwindows_df: Cell by windows matrix.
+    """
+
+    # Get translations from tile_ids to window_ids
+    tile_to_window = defaultdict(list)
+    for i, row in temp_windows_m_blacklist.iterrows() :
+        tile_to_window[row['tile_name']].append(row['window_id'])
+
+    # Aggregate across blacklist
+    aggregated = (
+        temp_windows_m_blacklist
+        .groupby("window_id", as_index=False)
+        .agg(
+            {
+                "Chromosome": "first",
+                "gc_count": "sum",
+                "at_count": "sum",
+                "length": "sum",
+            }
+        )
+    )
+
+    aggregated["effective_length"] = aggregated["length"]
+    aggregated["percent_effective_length"] = (
+        100 * aggregated["effective_length"] / window_size
+    )
+
+    aggregated["GC_fraction"] = (
+        aggregated["gc_count"] / window_size
+    )
+
+    aggregated["AT_fraction"] = (
+        aggregated["at_count"] / window_size
+    )
+
+    aggregated["N_fraction"] = (
+        (aggregated["effective_length"]
+        - aggregated["gc_count"]
+        - aggregated["at_count"])
+        / window_size
+    )
+
+    aggregated[["Start", "End"]] = (
+        aggregated["window_id"]
+        .str.extract(r":(\d+)-(\d+)")
+        .astype(int)
+    )
+    aggregated["length"] = window_size
+
+    cellxwindows_aggregated = defaultdict(lambda: 0)
+
+    for col, targets in tile_to_window.items():
+        for t in targets:
+            cellxwindows_aggregated[t] = cellxwindows_aggregated[t] + cellxwindows_df[col]
+
+    cellxwindows_aggregated_df = pd.DataFrame(cellxwindows_aggregated)
+
+    return aggregated, cellxwindows_aggregated_df
+
 
 
 def get_whitelists(WHITELIST_FILE):
@@ -267,22 +343,22 @@ def subtract(main, to_subtract):
     return gr
 
 
-def calculate_fractions(windows, prefix_sums):
-    """Calculate base-fraction annotations for windows.
+def calculate_counts(windows, prefix_sums):
+    """Calculate base-count annotations for windows.
 
-    Adds GC_fraction, AT_fraction, and N_fraction columns to a window
+    Adds gc_count, at_count, and length columns to a window
     dataframe using prefix sums over the chromosome sequence.
 
     Args:
         windows: Dataframe of genomic windows with Start and End columns.
         prefix_sums: Dictionary containing GC and AT prefix-sum arrays.
     """
-    gc_fractions = []
-    at_fractions = []
-    n_fractions = []
-    for i, window in windows.iterrows():
+    gc_counts = []
+    at_counts = []
+    lengths = []
 
-        # Calculate the GC, AT, and N counts in the window using prefix sums
+    for _, window in windows.iterrows():
+
         if window["Start"] > 0:
             gc_count = (
                 prefix_sums["GC"][window["End"] - 1]
@@ -296,28 +372,18 @@ def calculate_fractions(windows, prefix_sums):
             gc_count = prefix_sums["GC"][window["End"] - 1]
             at_count = prefix_sums["AT"][window["End"] - 1]
 
-        total_bases = window["End"] - window["Start"]
+        length = window["End"] - window["Start"]
 
-        gc_fractions.append(gc_count / total_bases)
-        at_fractions.append(at_count / total_bases)
-        n_fractions.append(1 - gc_count / total_bases - at_count / total_bases)
+        gc_counts.append(gc_count)
+        at_counts.append(at_count)
+        lengths.append(length)
 
-    windows["GC_fraction"] = gc_fractions
-    windows["AT_fraction"] = at_fractions
-    windows["N_fraction"] = n_fractions
+    windows = windows.copy()
+    windows["gc_count"] = gc_counts
+    windows["at_count"] = at_counts
+    windows["length"] = lengths
 
     return windows
-
-
-def weighted_avg(subdf, col):
-    """Calculate a width-weighted average.
-
-    Args:
-        subdf: Dataframe containing a width column and the value column.
-        col: Name of the column to average.
-    """
-    # weighted by width
-    return (subdf[col] * subdf["width"]).sum() / subdf["width"].sum()
 
 
 def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST):
@@ -341,17 +407,17 @@ def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST):
         start = time.time()
 
         # Calculate prefix sums
-        windows_m_blacklist_fracs = make_windows(
+        windows_m_blacklist = make_windows(
             genome, REFERENCE_BLACKLIST, WINDOW_SIZE, STEP_SIZE
         )
 
         # Export
-        windows_m_blacklist_fracs.to_csv(
+        windows_m_blacklist.to_csv(
             f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv",
             sep="\t",
             index=False,
         )
-        windows_m_blacklist_fracs = pd.read_csv(
+        windows_m_blacklist = pd.read_csv(
             f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv", sep="\t"
         )
         end = time.time()
@@ -359,55 +425,25 @@ def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST):
 
     # If file already created, just read it in
     else:
-        windows_m_blacklist_fracs = pd.read_csv(
+        windows_m_blacklist = pd.read_csv(
             f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv", sep="\t"
         )
 
-    # Recombine windows
-    windows_m_blacklist_fracs["width"] = (
-        windows_m_blacklist_fracs["End"] - windows_m_blacklist_fracs["Start"]
-    )
-    windows_m_blacklist_fracs = (
-        windows_m_blacklist_fracs.groupby("window_id")
-        .apply(
-            lambda x: pd.Series(
-                {
-                    "Chromosome": x["Chromosome"].iloc[0],
-                    "Start": x["Start"].min(),
-                    "End": x["End"].max(),
-                    "GC_fraction": weighted_avg(x, "GC_fraction"),
-                    "AT_fraction": weighted_avg(x, "AT_fraction"),
-                    "N_fraction": weighted_avg(x, "N_fraction"),
-                }
-            )
-        )
-        .reset_index()
-    )
-
-    # Remove windows with large fraction as N
-    windows_m_blacklist_fracs = windows_m_blacklist_fracs.loc[
-        windows_m_blacklist_fracs["N_fraction"] < 0.001
-    ]
+    # Remove chromosomes
     chrs_to_use = [f"chr{i}" for i in range(1, 23)]
-    windows_m_blacklist_fracs = windows_m_blacklist_fracs[
-        windows_m_blacklist_fracs["Chromosome"].isin(chrs_to_use)
+    windows_m_blacklist = windows_m_blacklist[
+        windows_m_blacklist["Chromosome"].isin(chrs_to_use)
     ]
 
-    # add tile id
-    windows_m_blacklist_fracs["tile_name"] = (
-        windows_m_blacklist_fracs["Chromosome"].astype(str)
+    windows_m_blacklist["tile_name"] = (
+        windows_m_blacklist["Chromosome"].astype(str)
         + "-"
-        + windows_m_blacklist_fracs["Start"].astype(str)
+        + windows_m_blacklist["Start"].astype(str)
         + ":"
-        + windows_m_blacklist_fracs["End"].astype(str)
+        + windows_m_blacklist["End"].astype(str)
     )
 
-    # Drop duplicate rows
-    windows_m_blacklist_fracs = windows_m_blacklist_fracs.drop_duplicates(
-        subset="tile_name", keep="first"
-    ).reset_index(drop=True)
-
-    return windows_m_blacklist_fracs
+    return windows_m_blacklist
 
 
 def create_cellxwindows(
@@ -451,7 +487,8 @@ def create_cellxwindows(
     # Track number of fragments
     barcode_counts = defaultdict(int)
 
-    windows_pr = pr.PyRanges(windows)
+    dd_windows = windows.drop_duplicates(subset=["Chromosome", "Start", "End"])
+    windows_pr = pr.PyRanges(dd_windows)
     tiles = windows["tile_name"].unique()
     tile_idx = {t: i for i, t in enumerate(tiles)}
 
@@ -615,6 +652,7 @@ def run_aggregation(
     sample_name,
     pickle_out,
     windows,
+    window_size,
     whitelists,
     neighbors=200,
     bgdCN=2,
@@ -631,6 +669,7 @@ def run_aggregation(
         sample_name: Sample name used to select the matching whitelist.
         pickle_out: Path for optional temporary pickle output.
         windows: Dataframe of annotated windows.
+        window_size: size of windows in bp
         whitelists: Optional dictionary mapping sample names to barcodes.
         neighbors: Number of GC-nearest windows to use for background counts.
         bgdCN: Background copy number used to scale fold changes.
@@ -644,43 +683,15 @@ def run_aggregation(
     if cellxwindows_df is None:
         return None
 
-    # Remove windows where all are empty
-    nonzero_windows = cellxwindows_df.columns
-    windows_r = windows[windows["tile_name"].isin(nonzero_windows)].copy()
-    out_log.append(f"Windows removed: {len(windows) - len(windows_r)}")
+    windows_r, cellxwindows_df = combine_split_windows(windows, window_size, cellxwindows_df)
+    countSummary = cellxwindows_df.T
 
-    # Collect windows metadata
-    # TODO: I don't think the script actually uses the effective length, though the blacklist used is very short so it wouldn't matter
-    wmeta = (
-        windows_r.assign(width=lambda d: d.End - d.Start)
-        .groupby("window_id")
-        .apply(
-            lambda d: pd.Series(
-                {
-                    "effectiveLength": d["width"].sum(),
-                    "percentEffectiveLength": 100
-                    * d["width"].sum()
-                    / (d.End.max() - d.Start.min()),
-                    "GC": (d.GC_fraction * d.width).sum() / d.width.sum(),
-                    "AT": (d.AT_fraction * d.width).sum() / d.width.sum(),
-                    "N": (d.N_fraction * d.width).sum() / d.width.sum(),
-                    "Chromosome": d.Chromosome.iloc[0],
-                    "Start": d.Start.min(),
-                    "End": d.End.max(),
-                }
-            )
-        )
-        .reset_index()
-    )
-
-    # get counts by window ids
-    tile2window = {}
-    for i, row in windows_r.iterrows():
-        tile2window[row["tile_name"]] = row["window_id"]
-
-    window_ids = cellxwindows_df.columns.map(tile2window)
-    countSummary = cellxwindows_df.T.groupby(window_ids).sum()
-
+    # Filter for N fraction
+    windows_r = windows_r.loc[windows_r["N_fraction"] <= 0.001]
+    good_window_ids = windows_r["window_id"]
+    countSummary = countSummary.loc[countSummary.index.isin(good_window_ids)]
+    countSummary = countSummary.loc[good_window_ids]
+    
     window_ids_final = {
         id: i for i, id in enumerate(countSummary.index.to_list())
     }
@@ -689,7 +700,7 @@ def run_aggregation(
     }
     X = countSummary.to_numpy()
 
-    gc = wmeta["GC"].to_numpy()
+    gc = windows_r["GC_fraction"].to_numpy()
 
     # Calculate statistics
     bdgMean = np.zeros_like(X, dtype=float)
@@ -715,8 +726,8 @@ def run_aggregation(
 
     # Resulting data
     data_package = {
-        "wmeta": wmeta,
-        "windows": windows_r,
+        "wmeta": windows_r,
+        # "windows": windows_r,
         "windowidx": window_ids_final,
         "barcodeidx": cell_barcodes,
         "CNs": CNs,
