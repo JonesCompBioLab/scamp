@@ -657,6 +657,7 @@ def run_aggregation(
     neighbors=200,
     bgdCN=2,
     MAKE_TEMP_SAVE=True,
+    pseudobulk_clusters = None
 ):
     """Run window-level count and copy-number aggregation.
 
@@ -674,6 +675,7 @@ def run_aggregation(
         neighbors: Number of GC-nearest windows to use for background counts.
         bgdCN: Background copy number used to scale fold changes.
         MAKE_TEMP_SAVE: Whether to save the intermediate data package.
+        pseudobulk_clusters: path to pseudobulk tsv dict
     """
     # cell by windows matrix
     cellxwindows_df = create_cellxwindows(
@@ -691,6 +693,23 @@ def run_aggregation(
     good_window_ids = windows_r["window_id"]
     countSummary = countSummary.loc[countSummary.index.isin(good_window_ids)]
     countSummary = countSummary.loc[good_window_ids]
+
+    # Parse pseudobulk file
+    if pseudobulk_clusters is not None :
+        pseudobulk_df = pd.read_csv(pseudobulk_clusters, sep = '\t', index_col= 0, names = ["Barcode", "Cluster"])
+        cluster_counts = defaultdict(int)
+        for ridx, row in pseudobulk_df.iterrows() :
+            cluster_counts[row['Cluster']] += 1
+        print(cluster_counts)
+        print("Before")
+        print(countSummary)
+
+        for cluster, count in cluster_counts.items() :
+            countSummary[cluster] /= count
+        print("After")
+        print(countSummary)
+
+
     
     window_ids_final = {
         id: i for i, id in enumerate(countSummary.index.to_list())

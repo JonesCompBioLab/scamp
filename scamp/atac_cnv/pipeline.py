@@ -30,7 +30,8 @@ def sc_cnv_pipeline(
     PKL_OUTPUT_DIRECTORY,
     recreate_pkl,
     FRAGMENT_FILE_KEY=None,
-    ASSEMBLY="hg38"
+    ASSEMBLY="hg38",
+    pseudobulk_clusters = None
 ):
     """Run the scATAC copy-number pipeline.
 
@@ -58,6 +59,7 @@ def sc_cnv_pipeline(
         GENES_ANNO: Path to gene annotation file, relative to this module.
         REFERENCE_BLACKLIST: Path to blacklist BED file, relative to this
             module.
+        PSEUDOBULK_CLUSTERS: Path to pseudobulk cluster tsv
     """
     os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
@@ -103,6 +105,7 @@ def sc_cnv_pipeline(
                         genes_pr,
                         recreate_pkl,
                         cores_per_sample,
+                        pseudobulk_clusters
                     )
                 )
 
@@ -135,6 +138,7 @@ def sc_cnv_pipeline(
             genes_pr,
             recreate_pkl,
             cores_per_sample,
+            pseudobulk_clusters
         )
         for i in log:
             print(i)
@@ -159,6 +163,7 @@ def run_sample(
     genes_pr,
     recreate_pkl,
     cores_per_sample,
+    pseudobulk_clusters
 ):
     """Run CNV aggregation and gene export for one sample.
 
@@ -175,6 +180,7 @@ def run_sample(
         genes_pr: PyRanges object containing gene annotations.
         recreate_pkl: Whether to recreate existing intermediate pickle files.
         cores_per_sample: Number of cores to use within the sample.
+        pseudobulk_clusters: path to the pseudobulk cluster tsv
     """
     out_log = []
     out_log.append("")
@@ -210,6 +216,7 @@ def run_sample(
             N_NEIGHBORS,
             bgdCN=2,
             MAKE_TEMP_SAVE=True,
+            pseudobulk_clusters=pseudobulk_clusters
         )
         end = time.time()
         out_log.append(f"Cell by window runtime: {end - start:.2f} seconds")

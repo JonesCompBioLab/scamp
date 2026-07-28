@@ -178,7 +178,13 @@ def quantify_copy_numbers(
         typer.Option(
             help="Reference genome name, to pair with a blacklist."
         ),
-    ] = "hg38"
+    ] = "hg38",
+    pseudobulk_clusters: Annotated[
+        str,
+        typer.Option(
+            help="If pseudobulked, provide file mapping original barcode to pseudobulk cluster key (tsv with two columns: barcode, cluster name)"
+        ),
+    ] = None
 ):
     if fragment_file is None and fragment_directory is None:
         print("Error: requires copy-numbers-file or copy-numbers-folder")
@@ -215,7 +221,8 @@ def quantify_copy_numbers(
         pickle_dir,
         recreate_pkl,
         fragment_file_key,
-        reference_genome_name
+        reference_genome_name,
+        pseudobulk_clusters
     )
 
 @scamp_app.command(
