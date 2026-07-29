@@ -696,18 +696,15 @@ def run_aggregation(
 
     # Parse pseudobulk file
     if pseudobulk_clusters is not None :
+        print("Scaling cell by window based on pseudobulk cluster sizes")
         pseudobulk_df = pd.read_csv(pseudobulk_clusters, sep = '\t', index_col= 0, names = ["Barcode", "Cluster"])
         cluster_counts = defaultdict(int)
         for ridx, row in pseudobulk_df.iterrows() :
             cluster_counts[row['Cluster']] += 1
-        print(cluster_counts)
-        print("Before")
-        print(countSummary)
 
         for cluster, count in cluster_counts.items() :
             countSummary[cluster] /= count
-        print("After")
-        print(countSummary)
+
 
 
     
