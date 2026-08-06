@@ -5,6 +5,7 @@ Command-line tools for scAmp.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from typing import Annotated, Literal, Union
 import warnings
@@ -301,52 +302,89 @@ def visualize(
 @scamp_app.command(name="predict", help="Predict ecDNA status.")
 def predict_ecdna(
     output_dir: OutputDirArg,
-    model_file: ModelDirArg,
-    copy_numbers_file: CopyNumberFileArg = None,
-    anndata_file: AnnDataFileArg = None,
+    copy_numbers: Annotated[
+        str, typer.Argument(help="MEX, csv, tsv, or anndata of copy numbers (cell by gene matrix)")
+    ],
+    model_file: ModelDirArg = str(Path(__file__).resolve().parent / "pretrained_models" / "scamp_model_1.0"),
+
+
     whitelist_file: WhitelistFileArg = None,
-    mode: Annotated[
-        str, typer.Option(help="Mode: (currently only offering `copynumber`)")
-    ] = "copynumber",
+    log_dir: Annotated[
+        str, typer.Argument(help="cNMF log dir")
+    ] = "./temp",
+
+    verbose: Annotated[
+        bool, typer.Option("--verbose", help="Enable verbose output")
+    ] = False,
     decision_rule: Annotated[
-        float, typer.Option(help="Likelihood decision rule.")
+        float, typer.Option(help="NN likelihood decision rule.")
     ] = 0.5,
-    min_copy_number: Annotated[
-        float, typer.Option(help="Minimum copy-number to consider.")
-    ] = 2.0,
-    max_percentile: Annotated[
-        float, typer.Option(help="Maximum percentile to cap copy-numbers.")
-    ] = 99.0,
+    # min_copy_number: Annotated[
+    #     float, typer.Option(help="Minimum copy-number to consider.")
+    # ] = 2.0,
+    # max_percentile: Annotated[
+    #     float, typer.Option(help="Maximum percentile to cap copy-numbers.")
+    # ] = 99.0,
     filter_copy_number: Annotated[
          float, typer.Option(help="Drop genes whose mean copy-number is below this threshold.")
     ] = 2.5,
-    no_plot: Annotated[
-        float, typer.Option(help="Suppress plotting functionality.")
-    ] = False
+    predictions: Annotated[
+            str, typer.Option(help="Path to old predictions file if recalculating clusters/species without predicting again.")
+    ] = None,
+    predict_method: Annotated[
+            Literal["NN", "KNN", "GMM"],
+            typer.Option(help="Method to use for predicting ecDNA. NN (old version), KNN (suggested), or GMM")
+    ] = "KNN",
+    deconvolution_method: Annotated[
+            Literal["hier", "cNMF", "auto"],
+            typer.Option(help="Method to use for clustering genes into species. hier (hierarchical clustering based), cNMF, or auto (automatically chooses method)")
+    ] = "auto",
+    one_thresh: Annotated[
+            float, typer.Option(help="Threshold for choosing one distribution in GMM/KMM + GMM.")
+    ] = 2.5,
+    kneedle_coeff: Annotated[
+            float, typer.Option(help="Higher means kneedle tends to fewer GMM distributions.")
+    ] = 3,
+    hier_ddist: Annotated[
+            float, typer.Option(help="Distance for null nodes in hierarchical clustering.")
+    ] = 1.3,
+    min_weight: Annotated[
+            float, typer.Option(help="Distributions with lower weight are ignored in GMM.")
+    ] = 0.005,
+    var_scale: Annotated[
+            float, typer.Option(help="Scaled GMM parameter. Greater value decreases false positives.")
+    ] = 0.5,
+    k_mult: Annotated[
+            float, typer.Option(help="Multiplier for K in KNN for predictions.")
+    ] = 2.5,
+    cNMF_thresh: Annotated[
+            float, typer.Option(help="Threshold for choosing cNMF when using combo")
+    ] = 0.55,
+    error_w: Annotated[
+            float, typer.Option(help="Importance of error in deciding cNMF number of ecDNA species")
+    ] = 0.25,
+    score_cutoff: Annotated[
+            float, typer.Option(help="Cutoff for deciding a gene belongs to a species of ecDNA")
+    ] = 3
 ) -> None:
+    
 
-    if copy_numbers_file is None and copy_numbers_folder is None:
-        print("Error: requires copy-numbers-file or copy-numbers-folder")
+    os.makedirs(output_dir, exist_ok=True)
 
-    if mode == "copynumber":
-        predictions = predict.predict_ecdna_from_copy_number(
-            copy_numbers_file,
-            model_file,
-            decision_rule,
-            min_copy_number,
-            max_percentile,
-            filter_copy_number,
-            whitelist_file
-        )
 
-        os.makedirs(output_dir)
+    out_log = predict.run_sample(copy_numbers, output_dir, predictions, model_file, whitelist_file, decision_rule, 
+               filter_copy_number, predict_method, one_thresh, kneedle_coeff, 
+               min_weight, var_scale, k_mult, deconvolution_method, hier_ddist, cNMF_thresh,
+               error_w, score_cutoff, log_dir, verbose) 
 
-        predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
-        if not no_plot:
-            plotting.plot_scamp_predictions_plotly(
-                predictions,
-                f"{output_dir}/ecDNA_predictions.html",
-                title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
-            )
+    # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
+    # if not no_plot:
+    #     plotting.plot_scamp_predictions_plotly(
+    #         predictions,
+    #         f"{output_dir}/ecDNA_predictions.html",
+    #         title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
+    #     )
 
-        print(f"Output written out to {output_dir}.")
+    with open(f"{output_dir}/log.log", "w") as f:
+        f.writelines(line + "\n" for line in out_log)
+    print(f"Output written out to {output_dir}.")

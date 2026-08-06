@@ -16,71 +16,12 @@ from pathlib import Path
 
 from scamp import io
 from scamp import models
-from scamp.predict import utilities
+from scamp.predict import predict_methods, species_deconvolution
 from scamp import plotting
 
 from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, fcluster
 
-
-def predict_ecdna_from_anndata(
-    out_log, anndata_file,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
-):
-    counts_df = io.read_anndata_file(anndata_file)
-    return predict(out_log, counts_df,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold)
-
-
-def predict_ecdna_from_mex(
-    out_log, mex_folder,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
-):
-    counts_df = io.read_mex_file(mex_folder)
-
-    return predict(out_log, counts_df,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold)
-
-
-
-def predict_ecdna_from_copy_number(
-    out_log, counts_file,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
-):
-
-    counts_df = io.read_copy_numbers_file(counts_file)
-    return predict(out_log, counts_df,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold)
 
 
 def predict(
@@ -89,10 +30,14 @@ def predict(
     saved_model_directory,
     whitelist_file,
     decision_rule,
-    min_copy_number,
-    max_percentile,
     filter_copy_number,
-    cluster_distance_threshold
+    predict_method,
+    one_thresh = None,
+    kneedle_coeff = None,
+    min_weight = None,
+    var_scale = None,
+    k_mult = None,
+    verbose = False
 ) :
     model = models.SCAMP.load(saved_model_directory)
 
@@ -100,58 +45,105 @@ def predict(
         whitelist = pd.read_csv(whitelist_file, header=None).iloc[:,0].values
         counts_df = counts_df.loc[np.intersect1d(counts_df.index, whitelist)]
 
-    X, genes_pass_filter = model.prepare_copy_numbers(
-        counts_df.to_numpy(),
-        np.array(counts_df.columns),
-        min_copy_number=min_copy_number,
-        max_percentile=max_percentile,
-        filter_copy_number=filter_copy_number,
-    )
+    result_rows = []
 
-    probas = model.proba(torch.Tensor(X)).detach().numpy()[:, 1]
+    # Run one of three prediction methods
+    # TODO: track time, if this takes too long, try to sort out similar genes maybe so it doesn't have to run on all genes?
+    i = 0
+    # Keep track of vectors to avoid redundancy in computation
+    used_vectors = {}
+    for gene in counts_df.columns:
+        i += 1
+        if i % 100 == 0 :
+            print(i)
+        if np.mean(counts_df[gene]) > filter_copy_number :
+            rounded = tuple(np.round(counts_df[gene].to_numpy(), 3))
 
-    prediction_df = pd.DataFrame(X[:, 0:3])
-    prediction_df.columns = ["mean", "var", "dispersion"]
+            # Already has near identical vector in database
+            if rounded in used_vectors :
+                new_row = used_vectors[rounded].copy()
+                out_log.append(f"Skipping {gene}, Using: {used_vectors[rounded]}")
+                new_row["Gene"] = gene
+                result_rows.append(new_row)
+            else :
+                if predict_method == "NN" :
+                    prediction, proba = predict_methods.NN_ecDNA_predict(model, counts_df[gene], out_log, np.array([gene]), decision_rule, verbose)
+                    result_rows.append({"Gene" : gene, "Proba" : proba, "Prediction" : prediction})
+                    used_vectors[rounded] = {"Gene" : gene, "Proba" : proba, "Prediction" : prediction}
+                elif predict_method == "GMM" :
+                    prediction, mean, var, weight = predict_methods.GMM_ecDNA_predict(model, counts_df[gene], out_log, one_thresh=one_thresh, genes = np.array([gene]), 
+                                                                                    decision_rule=decision_rule, kneedle_coeff=kneedle_coeff, var_scale = var_scale, 
+                                                                                    min_weight = min_weight, verbose = verbose)
+                    result_rows.append({"Gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "Prediction" : prediction})
+                    used_vectors[rounded] = {"Gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "Prediction" : prediction}
 
-    prediction_df["gene"] = genes_pass_filter
-    prediction_df["proba"] = probas
-    prediction_df["pred"] = prediction_df["proba"] >= decision_rule
+                elif predict_method == "KNN" :
+                    prediction, num_ecDNA_pos_cells = predict_methods.KNN_ecDNA_predict(model, counts_df[gene], out_log, np.array([gene]), one_thresh = one_thresh,
+                                                                                kneedle_coeff=kneedle_coeff, k_mult = k_mult,
+                                                                                var_scale = var_scale, decision_rule = decision_rule, verbose = verbose)
+                    result_rows.append({"Gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "Prediction" : prediction})
+                    used_vectors[rounded] = {"Gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "Prediction" : prediction}
+                else :
+                    print("Predict method must be one of KNN, GMM, NN. We recommend using KNN")
+                    exit(0)
 
-    prediction_df = cluster(out_log, prediction_df, counts_df, cluster_distance_threshold)
+    # In case no genes are above threshold
+    if len(result_rows) == 0 :
+        print("No genes passed copy number threshold")
+        exit(0)
+
+    prediction_df = pd.DataFrame(result_rows)
 
     return prediction_df
 
-def cluster (
-    out_log,
-    prediction_df,
-    counts_df,
-    cluster_distance_threshold   
+
+
+def cluster(
+    predict_df, counts_df, deconvolution_method, hier_ddist, cNMF_thresh, error_w, score_cutoff, log_dir, out_log, verbose
 ) :
-    # Get each ecDNA's copy numbers as a vector
-    ecDNA_genes = prediction_df.loc[prediction_df["pred"], "gene"].tolist()
+    # Get only the ecDNA positive genes
+    predict_df['Species'] = -1
+    ecDNA_genes = predict_df[predict_df["Prediction"] == True]["Gene"].tolist()
+    ecDNA_genes = list(dict.fromkeys(ecDNA_genes))
 
+    # If no genes are ecDNA positive, just return
     if len(ecDNA_genes) == 0 :
-        prediction_df["cluster"] = -1
-        out_log.append("No ecDNA detected in sample")
-        return prediction_df
-
+        return predict_df
+    
     counts_df_ecDNA = counts_df[ecDNA_genes]
-    gene_vectors = counts_df_ecDNA.T
 
-    # Euclidean distance clustering
-    Z = linkage(pdist(gene_vectors, metric="euclidean"), method="average")
-    clusters = fcluster(Z, t=float(cluster_distance_threshold), criterion="distance")
-    # cluster_map = pd.Series(clusters, index=ecDNA_genes)
-
-    # Add to dataframe
-    prediction_df["cluster"] = -1
-    prediction_df.loc[prediction_df["gene"].isin(ecDNA_genes), "cluster"] = clusters
-
-    return prediction_df
+    # Get rid of duplicate copy number vectors
+    df_unique, column_groups = species_deconvolution.remove_duplicates(counts_df_ecDNA)
 
 
-def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_copy_number, max_percentile, 
-               filter_copy_number, cluster_distance_threshold, no_plot) :
+    if deconvolution_method == "hier" :
+        species_to_gene, cell_by_ecDNA = species_deconvolution.hier_deconvolution(df_unique, hier_ddist)
+    elif deconvolution_method == "auto" :
+        species_to_gene, cell_by_ecDNA = species_deconvolution.combo_deconvolution(df_unique, out_log, cNMF_thresh, 'cNMF', error_w = error_w, 
+                                                                                   score_cutoff = score_cutoff, log_dir = log_dir, hier_ddist = hier_ddist, verbose = verbose)
+    elif deconvolution_method == "cNMF" :
+        species_to_gene, cell_by_ecDNA = species_deconvolution.cNMF_deconvolution(df_unique, 'cNMF', out_log, error_w = error_w, score_cutoff= score_cutoff,
+                                                                                  log_dir = log_dir, hier_ddist = hier_ddist, verbose = verbose)
+    else :
+        print ("Cluster method must be one of hier, combo, or cNMF. We recommend using combo")
+        exit(0)
+
+    # Add labels back
+    for species, genes in species_to_gene.items() :
+        for gene in genes :
+            for mapped_gene in column_groups[gene] :
+                predict_df.loc[predict_df["Gene"] == mapped_gene, "Species"] = species
+
+    return predict_df, cell_by_ecDNA
+    
+    
+
+
+# Can skip the first step by providing a predictions path (otherwise set it to none)
+def run_sample(file, output_dir, predictions, model_file, whitelist_file, decision_rule, 
+               filter_copy_number, predict_method, one_thresh, kneedle_coeff, 
+               min_weight, var_scale, k_mult, deconvolution_method, hier_ddist, cNMF_thresh,
+               error_w, score_cutoff, log_dir, verbose) :
     out_log = []
     # Detect extension
     out_log.append(f'Running {file}')
@@ -179,52 +171,31 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
     start = time.time()
     # Call different wrapper for each prediction type
     if mode == "copynumber":
-        predictions = predict_ecdna_from_copy_number(
-            out_log, file,
-            model_file, whitelist_file,
-            decision_rule,
-            min_copy_number,
-            max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
-        )
+        counts_df = io.read_copy_numbers_file(file)
     elif mode == "MEX" :
-        predictions = predict_ecdna_from_mex(
-            out_log, file,
-            model_file, whitelist_file,
-            decision_rule,
-            min_copy_number,
-            max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
-        )
+        counts_df = io.read_mex_file(file)
     else :
-        predictions = predict_ecdna_from_anndata(
-            out_log, file,
-            model_file, whitelist_file,
-            decision_rule,
-            min_copy_number,
-            max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
-        )
+        counts_df = io.read_anndata_file(file)
 
-    os.makedirs(output_dir, exist_ok=True)
+    # Allow cutting in the middle of pipeline with old predictions file
+    if predictions is None :
+        prediction_df = predict(out_log, counts_df, model_file, whitelist_file, decision_rule, filter_copy_number, predict_method,
+                                one_thresh, kneedle_coeff, min_weight, var_scale, k_mult, verbose)
+    else :
+        prediction_df = pd.read_csv(predictions, sep = '\t')
+
+    # Output early in case something breaks
+    filename = Path(file).stem
+    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep='\t')
+
+
+    prediction_df, cell_by_eCDNA = cluster(prediction_df, counts_df, deconvolution_method, hier_ddist, cNMF_thresh, error_w, score_cutoff, log_dir, out_log, verbose)
 
     # Output predictions and visualizations
-    filename = Path(file).stem
-
-    predictions.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep='\t')
-    if not no_plot:
-        plotting.plot_scamp_predictions_plotly(
-            predictions,
-            f"{output_dir}/ecDNA_predictions_{filename}.html",
-            title=f"scAmp predictions for {filename.split('/')[-1]}"
-        )
+    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep='\t')
+    cell_by_eCDNA.to_csv(f"{output_dir}/cell_by_ecDNA_{filename}.tsv", sep='\t', index = False)
 
     end = time.time()
-
-
     out_log.append(f"File {file} completed in {end - start:.2f} seconds")
     return out_log
 

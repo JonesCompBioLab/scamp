@@ -87,9 +87,9 @@ tutorials = [
 all = ["scamp[cuda,dev,docs,optional,tutorials]"]
 
 [tool.hatch.build.targets.wheel.force-include]
+"pretrained_models" = "scamp/pretrained_models"
 "scripts" = "scamp/scripts"
 "reference" = "scamp/reference"
-
 
 [tool.hatch.build.targets.wheel]
 packages = ['scamp']
