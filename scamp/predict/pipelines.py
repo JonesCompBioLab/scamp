@@ -48,14 +48,9 @@ def predict(
     result_rows = []
 
     # Run one of three prediction methods
-    # TODO: track time, if this takes too long, try to sort out similar genes maybe so it doesn't have to run on all genes?
-    i = 0
     # Keep track of vectors to avoid redundancy in computation
     used_vectors = {}
     for gene in counts_df.columns:
-        i += 1
-        if i % 100 == 0 :
-            print(i)
         if np.mean(counts_df[gene]) > filter_copy_number :
             rounded = tuple(np.round(counts_df[gene].to_numpy(), 3))
 
@@ -144,7 +139,9 @@ def run_sample(file, output_dir, predictions, model_file, whitelist_file, decisi
                filter_copy_number, predict_method, one_thresh, kneedle_coeff, 
                min_weight, var_scale, k_mult, deconvolution_method, hier_ddist, cNMF_thresh,
                error_w, score_cutoff, log_dir, verbose) :
-    out_log = []
+    out_log = [f"Settings\nModel path: {model_file}\nDecision rule: {decision_rule}\nPrediction method: {predict_method}\nDeconvolution method: {deconvolution_method}"]
+    out_log.append(f"Copy number filter: {filter_copy_number}")
+
     # Detect extension
     out_log.append(f'Running {file}')
     p = Path(file)

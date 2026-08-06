@@ -107,13 +107,13 @@ model : SCAMP model loaded from .pt file
 input : copy number list
 genes : gene name
 decision_rule : threshold for classifying ecDNA status
-log_results : Whether or not to print results
+verbose : Whether or not to print results
 
 RETURNS
 Boolean, the predicted ecDNA status
 Proba, the probability given by scamp
 '''
-def NN_ecDNA_predict(model, input, out_log, genes = np.array(['GENE']), decision_rule = 0.5, log_results = False) :
+def NN_ecDNA_predict(model, input, out_log, genes = np.array(['GENE']), decision_rule = 0.5, verbose = False) :
     input = np.array(input).reshape(-1, 1)
 
     X, genes_pass_filter = model.prepare_copy_numbers(
@@ -126,7 +126,7 @@ def NN_ecDNA_predict(model, input, out_log, genes = np.array(['GENE']), decision
 
 
     if len(genes_pass_filter) == 0 :
-        if log_results :
+        if verbose :
             out_log.append(f" {genes[0]} did not pass filter")
         return False
 
@@ -177,7 +177,8 @@ def KNN_ecDNA_predict(model, input, out_log,
         k = max(k, 10)
         # K is never greater than the input
         k = min(k, len(input))
-    print(f"k = {k}")
+    if verbose :
+        out_log.append(f"k = {k}")
 
     gmm = _GMM_fit(np.array(input).reshape(-1, 1), n_components, one_thresh, max_components, kneedle_coeff)
     x = np.array(arr).reshape(-1)
@@ -244,7 +245,8 @@ def KNN_ecDNA_predict(model, input, out_log,
                     decision_rule,
                     verbose
                 )[0]
-
+            if verbose :
+                out_log.append(f"{genes[0]} ecDNA:")
             out.append(res)
             
     return sum(out) > (ecDNA_percentage_thresh * n), sum(out)
