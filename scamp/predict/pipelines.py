@@ -9,19 +9,12 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import os
 import numpy as np
 import pandas as pd
-import torch
 import scanpy as sc
 import time
 from pathlib import Path
 
 from scamp import io
 from scamp import models
-from scamp.predict import predict_methods, species_deconvolution
-from scamp import plotting
-
-from scipy.spatial.distance import pdist, squareform
-from scipy.cluster.hierarchy import linkage, fcluster
-
 
 
 def predict(
