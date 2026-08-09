@@ -15,6 +15,7 @@ from pathlib import Path
 
 from scamp import io
 from scamp import models
+from scamp.predict import predict_methods, species_deconvolution
 
 
 def predict(
@@ -90,7 +91,7 @@ def cluster(
     predict_df, counts_df, deconvolution_method, hier_ddist, cNMF_thresh, error_w, score_cutoff, log_dir, out_log, verbose
 ) :
     # Get only the ecDNA positive genes
-    predict_df['Species'] = -1
+    predict_df['Species'] = "None"
     ecDNA_genes = predict_df[predict_df["Prediction"] == True]["Gene"].tolist()
     ecDNA_genes = list(dict.fromkeys(ecDNA_genes))
 
@@ -120,8 +121,14 @@ def cluster(
     for species, genes in species_to_gene.items() :
         for gene in genes :
             for mapped_gene in column_groups[gene] :
-                predict_df.loc[predict_df["Gene"] == mapped_gene, "Species"] = species
+                mask = predict_df["Gene"] == mapped_gene
 
+                current = predict_df.loc[mask, "Species"].iloc[0]
+
+                if current == "None":
+                    predict_df.loc[mask, "Species"] = str(species)
+                else:
+                    predict_df.loc[mask, "Species"] = current + ',' + str(species)
     return predict_df, cell_by_ecDNA
     
     

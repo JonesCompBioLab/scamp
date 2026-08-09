@@ -79,24 +79,28 @@ def cNMF_deconvolution(
     out = StringIO()
     err = StringIO()
 
-    cnmf_obj = cNMF(output_dir=log_dir, name=sample_name)
-    cnmf_obj.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=num_ecDNA, n_iter=n_iter, seed=seed)
-   
-    input_counts = pd.read_csv(cellbygene_path, sep = '\t', index_col = 0)
-    adata = ad.AnnData(input_counts)
-    cnmf_obj.save_norm_counts(adata)
     with redirect_stdout(out), redirect_stderr(err):
+
+        cnmf_obj = cNMF(output_dir=log_dir, name=sample_name)
+        cnmf_obj.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=num_ecDNA, n_iter=n_iter, seed=seed)
+    
+        input_counts = pd.read_csv(cellbygene_path, sep = '\t', index_col = 0)
+        adata = ad.AnnData(input_counts)
+        cnmf_obj.save_norm_counts(adata)
         cnmf_obj.factorize(worker_i=0, total_workers=1)
-    cnmf_obj.combine()
+        cnmf_obj.combine()
 
 
-    cnmf_obj.consensus(k=num_ecDNA, density_threshold=density_threshold, close_clustergram_fig=True, refit_usage = False)
-    usage_df, spectra_scores, spectra_tpm, top_genes = cnmf_obj.load_results(K=num_ecDNA, density_threshold=density_threshold, norm_usage = False)
-    
-    rf_usages = pd.read_csv(f"{log_dir}/{sample_name}/{sample_name}.usages.k_{num_ecDNA}.dt_{str(density_threshold).replace('.', '_')}.consensus.txt", sep = '\t', index_col = 0)
-    
-    Y = cellbygene.values
-    unnormalized_spectra_scores = efficient_ols_all_cols(rf_usages.values, Y, normalize_y = False)
+        cnmf_obj.consensus(k=num_ecDNA, density_threshold=density_threshold, close_clustergram_fig=True, refit_usage = False)
+        usage_df, spectra_scores, spectra_tpm, top_genes = cnmf_obj.load_results(K=num_ecDNA, density_threshold=density_threshold, norm_usage = False)
+        
+        rf_usages = pd.read_csv(f"{log_dir}/{sample_name}/{sample_name}.usages.k_{num_ecDNA}.dt_{str(density_threshold).replace('.', '_')}.consensus.txt", sep = '\t', index_col = 0)
+        
+        Y = cellbygene.values
+        unnormalized_spectra_scores = efficient_ols_all_cols(rf_usages.values, Y, normalize_y = False)
+
+    out_log.append(out.getvalue())
+    out_log.append(err.getvalue())
 
     #[ecDNA, gene, iter]
     rows, cols = unnormalized_spectra_scores.shape
@@ -179,7 +183,7 @@ def cNMF_deconvolution(
     
     cell_by_ecDNA = _cNMF_usage(ecDNA_species, species_to_gene, spectra_tpm, cellbygene, usage_df)
 
-    shutil.rmtree(f"{log_dir}/{sample_name}/cnmf_temp")
+    shutil.rmtree(f"{log_dir}/{sample_name}/cnmf_tmp")
 
     return species_to_gene, cell_by_ecDNA   
 
@@ -412,67 +416,68 @@ def _cNMF_find_k(max_species, cellbygene_df, hier_ddist, log_dir, sample_name, c
     # Silence certain printouts
     out = StringIO()
     err = StringIO()
-
-    cnmf_obj = cNMF(output_dir=log_dir, name=sample_name)
-    check_one = False
-    # Goes to one above because the next layer is needed for the score comparison
-    counts_to_check = range(1, max_species + 2)   
-    if 1 in counts_to_check :
-        cnmf_obj.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=counts_to_check[1:], n_iter=n_iter, seed=seed)
-        check_one = True
-
-    else :
-        cnmf_obj.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=counts_to_check, n_iter=n_iter, seed=seed)
-    
-   
-    input_counts = pd.read_csv(cellbygene_path, sep = '\t', index_col = 0)
-    adata = ad.AnnData(input_counts)
-    cnmf_obj.save_norm_counts(adata)
     with redirect_stdout(out), redirect_stderr(err):
-        cnmf_obj.factorize(worker_i=0, total_workers=1)
-    cnmf_obj.combine()
-    cnmf_obj.k_selection_plot(close_fig = True)
 
-    # Find best number of ecDNA using stability and error
 
-    npz = np.load(f"{log_dir}/{sample_name}/{sample_name}.k_selection_stats.df.npz", allow_pickle=True)
+        cnmf_obj = cNMF(output_dir=log_dir, name=sample_name)
+        check_one = False
+        # Goes to one above because the next layer is needed for the score comparison
+        counts_to_check = range(1, max_species + 2)   
+        if 1 in counts_to_check :
+            cnmf_obj.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=counts_to_check[1:], n_iter=n_iter, seed=seed)
+            check_one = True
 
-    k_df = pd.DataFrame(
-        data=npz["data"],
-        index=npz["index"],
-        columns=npz["columns"]
-    )
-
-    # Include 1 (stability always at 1)
-    if check_one :
-        cnmf_obj_1 = cNMF(output_dir=log_dir, name=sample_name)
-
-        cnmf_obj_1.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=1, n_iter=n_iter, seed=seed)
-        cnmf_obj_1.save_norm_counts(adata)
-        with redirect_stdout(out), redirect_stderr(err):
-            cnmf_obj_1.factorize(worker_i=0, total_workers=1)
-        cnmf_obj_1.combine()
-
+        else :
+            cnmf_obj.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=counts_to_check, n_iter=n_iter, seed=seed)
         
-        norm_counts = sc.read(cnmf_obj_1.paths['normalized_counts'])
+    
+        input_counts = pd.read_csv(cellbygene_path, sep = '\t', index_col = 0)
+        adata = ad.AnnData(input_counts)
+        cnmf_obj.save_norm_counts(adata)
+        cnmf_obj.factorize(worker_i=0, total_workers=1)
+        cnmf_obj.combine()
+        cnmf_obj.k_selection_plot(close_fig = True)
 
-        with np.load(cnmf_obj_1.paths['merged_spectra']%1, allow_pickle=True) as f:
-            obj = pd.DataFrame(**f)
-            spectra = obj
-        l2_spectra = (spectra.T / np.sqrt((spectra**2).sum(axis=1))).T
-        median_spectra = pd.DataFrame(l2_spectra.median(axis=0)).T
-        median_spectra = (median_spectra.T / median_spectra.sum(1)).T
-        rf_usages = cnmf_obj_1.refit_usage(norm_counts.X, median_spectra)
-        rf_usages = pd.DataFrame(rf_usages, index=norm_counts.obs.index)
-        rf_pred = rf_usages.dot(median_spectra)
+        # Find best number of ecDNA using stability and error
 
-        if sp.issparse(norm_counts.X):
-            prediction_error = ((norm_counts.X.todense() - rf_pred) ** 2).sum().sum()
-        else:
-            prediction_error = ((norm_counts.X - rf_pred) ** 2).sum().sum()
+        npz = np.load(f"{log_dir}/{sample_name}/{sample_name}.k_selection_stats.df.npz", allow_pickle=True)
 
-        new_row = pd.DataFrame([{'k' : 1, 'local_density_threshold' : 0.5, "silhouette" : 1, "prediction_error" : prediction_error}])
-        k_df = pd.concat([new_row, k_df], ignore_index=True)
+        k_df = pd.DataFrame(
+            data=npz["data"],
+            index=npz["index"],
+            columns=npz["columns"]
+        )
+
+        # Include 1 (stability always at 1)
+        if check_one :
+            cnmf_obj_1 = cNMF(output_dir=log_dir, name=sample_name)
+
+            cnmf_obj_1.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=1, n_iter=n_iter, seed=seed)
+            cnmf_obj_1.save_norm_counts(adata)
+            with redirect_stdout(out), redirect_stderr(err):
+                cnmf_obj_1.factorize(worker_i=0, total_workers=1)
+            cnmf_obj_1.combine()
+
+            
+            norm_counts = sc.read(cnmf_obj_1.paths['normalized_counts'])
+
+            with np.load(cnmf_obj_1.paths['merged_spectra']%1, allow_pickle=True) as f:
+                obj = pd.DataFrame(**f)
+                spectra = obj
+            l2_spectra = (spectra.T / np.sqrt((spectra**2).sum(axis=1))).T
+            median_spectra = pd.DataFrame(l2_spectra.median(axis=0)).T
+            median_spectra = (median_spectra.T / median_spectra.sum(1)).T
+            rf_usages = cnmf_obj_1.refit_usage(norm_counts.X, median_spectra)
+            rf_usages = pd.DataFrame(rf_usages, index=norm_counts.obs.index)
+            rf_pred = rf_usages.dot(median_spectra)
+
+            if sp.issparse(norm_counts.X):
+                prediction_error = ((norm_counts.X.todense() - rf_pred) ** 2).sum().sum()
+            else:
+                prediction_error = ((norm_counts.X - rf_pred) ** 2).sum().sum()
+
+            new_row = pd.DataFrame([{'k' : 1, 'local_density_threshold' : 0.5, "silhouette" : 1, "prediction_error" : prediction_error}])
+            k_df = pd.concat([new_row, k_df], ignore_index=True)
 
     max_score = max(k_df['prediction_error'])
 
@@ -493,7 +498,7 @@ def _cNMF_find_k(max_species, cellbygene_df, hier_ddist, log_dir, sample_name, c
     num_ecDNA = int(k_df.loc[k_df['score'].idxmax()]['k'])
 
     if verbose :
-        out_log.append(k_df)
+        out_log.append(k_df.to_string())
         out_log.append(f"Number of ecDNA chosen: {num_ecDNA}")
     return num_ecDNA
         
