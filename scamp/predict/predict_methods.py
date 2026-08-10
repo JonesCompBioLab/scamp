@@ -128,7 +128,7 @@ def NN_ecDNA_predict(model, input, out_log, genes = np.array(['GENE']), decision
     if len(genes_pass_filter) == 0 :
         if verbose :
             out_log.append(f" {genes[0]} did not pass filter")
-        return False
+        return False, 0
 
     # Just get the second to last layer
     _x = model.forward(torch.Tensor(X))

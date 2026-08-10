@@ -88,7 +88,7 @@ def predict(
 
 
 def cluster(
-    predict_df, counts_df, deconvolution_method, hier_ddist, cNMF_thresh, error_w, score_cutoff, log_dir, out_log, verbose
+    filename, predict_df, counts_df, deconvolution_method, hier_ddist, cNMF_thresh, error_w, score_cutoff, log_dir, out_log, verbose
 ) :
     # Get only the ecDNA positive genes
     predict_df['Species'] = "None"
@@ -108,10 +108,10 @@ def cluster(
     if deconvolution_method == "hier" :
         species_to_gene, cell_by_ecDNA = species_deconvolution.hier_deconvolution(df_unique, hier_ddist)
     elif deconvolution_method == "auto" :
-        species_to_gene, cell_by_ecDNA = species_deconvolution.combo_deconvolution(df_unique, out_log, cNMF_thresh, 'cNMF', error_w = error_w, 
+        species_to_gene, cell_by_ecDNA = species_deconvolution.combo_deconvolution(df_unique, out_log, cNMF_thresh, filename, error_w = error_w, 
                                                                                    score_cutoff = score_cutoff, log_dir = log_dir, hier_ddist = hier_ddist, verbose = verbose)
     elif deconvolution_method == "cNMF" :
-        species_to_gene, cell_by_ecDNA = species_deconvolution.cNMF_deconvolution(df_unique, 'cNMF', out_log, error_w = error_w, score_cutoff= score_cutoff,
+        species_to_gene, cell_by_ecDNA = species_deconvolution.cNMF_deconvolution(df_unique, filename, out_log, error_w = error_w, score_cutoff= score_cutoff,
                                                                                   log_dir = log_dir, hier_ddist = hier_ddist, verbose = verbose)
     else :
         print ("Cluster method must be one of hier, combo, or cNMF. We recommend using combo")
@@ -186,10 +186,10 @@ def run_sample(file, output_dir, predictions, model_file, whitelist_file, decisi
     prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep='\t')
 
 
-    prediction_df, cell_by_eCDNA = cluster(prediction_df, counts_df, deconvolution_method, hier_ddist, cNMF_thresh, error_w, score_cutoff, log_dir, out_log, verbose)
+    prediction_df, cell_by_eCDNA = cluster(filename, prediction_df, counts_df, deconvolution_method, hier_ddist, cNMF_thresh, error_w, score_cutoff, log_dir, out_log, verbose)
 
     # Output predictions and visualizations
-    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep='\t')
+    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep='\t', index = False)
     cell_by_eCDNA.to_csv(f"{output_dir}/cell_by_ecDNA_{filename}.tsv", sep='\t', index = False)
 
     end = time.time()
