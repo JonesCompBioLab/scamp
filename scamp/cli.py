@@ -333,8 +333,8 @@ def predict_ecdna(
     ] = None,
     predict_method: Annotated[
             Literal["NN", "KNN", "GMM"],
-            typer.Option(help="Method to use for predicting ecDNA. NN (old version), KNN (suggested), or GMM")
-    ] = "KNN",
+            typer.Option(help="Method to use for predicting ecDNA. NN (old version), KNN, or GMM")
+    ] = "GMM",
     deconvolution_method: Annotated[
             Literal["hier", "cNMF", "auto"],
             typer.Option(help="Method to use for clustering genes into species. hier (hierarchical clustering based), cNMF, or auto (automatically chooses method)")
@@ -355,8 +355,8 @@ def predict_ecdna(
             float, typer.Option(help="Scaled GMM parameter. Greater value decreases false positives.")
     ] = 0.5,
     k_mult: Annotated[
-            float, typer.Option(help="Multiplier for K in KNN for predictions.")
-    ] = 2.5,
+            float, typer.Option(help="Multiplier for K in KNN for predictions. If not set, defaults to k = 100")
+    ] = None,
     cNMF_thresh: Annotated[
             float, typer.Option(help="Threshold for choosing cNMF when using combo")
     ] = 0.55,

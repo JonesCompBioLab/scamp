@@ -163,20 +163,26 @@ def KNN_ecDNA_predict(model, input, out_log,
                       one_thresh = 1.15, 
                       max_components = 15,
                       kneedle_coeff = 3,
-                      k_mult = 2.5, 
-                      k = None,
+                      k_mult = None, 
+                      k = 100,
                       ecDNA_percentage_thresh = 0.001, 
                       var_scale = 0.5,
                       decision_rule = 0.5,
                       verbose = False) :
-    arr = sorted(input)
+    
+    if len(input) > 4000:
+        arr = np.random.choice(input, size=4000, replace=False)
+    else:
+        arr = np.asarray(input)
 
-    if k is None :
-        k = int(k_mult * math.sqrt(len(input)))
+    # If k mult is filled, use it!
+    if k_mult is not None :
+        k = int(k_mult * math.sqrt(len(arr)))
         # K should never be less than 10
         k = max(k, 10)
         # K is never greater than the input
-        k = min(k, len(input))
+        k = min(k, len(arr))
+
     if verbose :
         out_log.append(f"k = {k}")
 
@@ -207,6 +213,13 @@ def KNN_ecDNA_predict(model, input, out_log,
 
     window_size = k + 1  # include itself
 
+    # Get label means to normalize distributions
+    arr = np.asarray(arr)
+    label_means = {
+        label: arr[labels == label].mean()
+        for label in np.unique(labels)
+    }
+
     # Slide window
     for i in range(n):
         target = arr[i]
@@ -235,6 +248,8 @@ def KNN_ecDNA_predict(model, input, out_log,
             count += 1
 
         subset = np.array(arr[l + 1:r])
+        mean_diff = np.mean(subset) - label_means[target_label]
+        subset = subset - mean_diff
 
         if np.mean(subset) > 2.5 and np.var(subset) > 10:
             res = NN_ecDNA_predict(
