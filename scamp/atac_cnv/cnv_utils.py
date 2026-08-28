@@ -510,6 +510,15 @@ def create_cellxwindows(
                 "Barcode",
                 "Count",
             ]
+        elif ncol == 6:
+            frag_chunk.columns = [
+                "Chromosome",
+                "Start",
+                "End",
+                "Barcode",
+                "Count",
+                "Strand",
+            ]
         else:
             raise ValueError(
                 f"Unexpected number of columns in fragment file {frag_file}: {ncol}"
