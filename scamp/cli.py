@@ -273,7 +273,7 @@ def visualize(
     # Parse expression data
     if os.path.isdir(expression_file):
         # MEX format
-        exp_adata = sc.read_10x_mtx(exp_adata)
+        exp_adata = sc.read_10x_mtx(expression_file)
     else:
         expression_file_ext = expression_file.split(".")[-1]
         if expression_file_ext == "h5ad":
