@@ -35,6 +35,10 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
             values and embeddings.
     """
     
+    cells = adata.obs_names.intersection(expression_adata.obs_names)
+    adata = adata[cells].copy()
+    expression_adata = expression_adata[cells].copy()
+
     # Making gene set
     scamp = pd.read_csv(scamp_tsv, sep = "\t")
     gene_set_data = {
@@ -63,10 +67,11 @@ def setup_anndata(adata, scamp_tsv, temp_folder, cn_threshold, cn_percentile_thr
     # Add cell sets
     add_cell_sets(adata, gene_set_df, cn_threshold, cn_percentile_threshold)
 
-    # Convert visualization to expression data
-    adata.X = expression_adata.X.copy()
+    ecdna_obs = adata.obs
+    adata = expression_adata.copy()
+    adata.var_names_make_unique()
+    adata.obs = ecdna_obs
     adata.X = np.log1p(adata.X)
-    adata.obsm = expression_adata.obsm.copy()
 
     # cellxgene needs an embedding, make sure we have one
     get_umap(umap_name, adata, temp_folder)
