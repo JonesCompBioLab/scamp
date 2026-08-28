@@ -19,8 +19,6 @@ from scamp import models
 from scamp.predict import utilities
 from scamp import plotting
 
-from scipy.spatial.distance import pdist, squareform
-from scipy.cluster.hierarchy import linkage, fcluster
 
 
 def predict_ecdna_from_anndata(
@@ -29,8 +27,7 @@ def predict_ecdna_from_anndata(
     decision_rule,
     min_copy_number,
     max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
+    filter_copy_number
 ):
     counts_df = io.read_anndata_file(anndata_file)
     return predict(out_log, counts_df,
@@ -38,8 +35,7 @@ def predict_ecdna_from_anndata(
     decision_rule,
     min_copy_number,
     max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold)
+    filter_copy_number)
 
 
 def predict_ecdna_from_mex(
@@ -48,8 +44,7 @@ def predict_ecdna_from_mex(
     decision_rule,
     min_copy_number,
     max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
+    filter_copy_number
 ):
     counts_df = io.read_mex_file(mex_folder)
 
@@ -58,8 +53,7 @@ def predict_ecdna_from_mex(
     decision_rule,
     min_copy_number,
     max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold)
+    filter_copy_number)
 
 
 
@@ -69,8 +63,7 @@ def predict_ecdna_from_copy_number(
     decision_rule,
     min_copy_number,
     max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
+    filter_copy_number
 ):
 
     counts_df = io.read_copy_numbers_file(counts_file)
@@ -79,8 +72,7 @@ def predict_ecdna_from_copy_number(
     decision_rule,
     min_copy_number,
     max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold)
+    filter_copy_number)
 
 
 def predict(
@@ -91,8 +83,7 @@ def predict(
     decision_rule,
     min_copy_number,
     max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
+    filter_copy_number
 ) :
     model = models.SCAMP.load(saved_model_directory)
 
@@ -117,41 +108,10 @@ def predict(
     prediction_df["proba"] = probas
     prediction_df["pred"] = prediction_df["proba"] >= decision_rule
 
-    prediction_df = cluster(out_log, prediction_df, counts_df, cluster_distance_threshold)
-
     return prediction_df
-
-def cluster (
-    out_log,
-    prediction_df,
-    counts_df,
-    cluster_distance_threshold   
-) :
-    # Get each ecDNA's copy numbers as a vector
-    ecDNA_genes = prediction_df.loc[prediction_df["pred"], "gene"].tolist()
-
-    if len(ecDNA_genes) == 0 :
-        prediction_df["cluster"] = -1
-        out_log.append("No ecDNA detected in sample")
-        return prediction_df
-
-    counts_df_ecDNA = counts_df[ecDNA_genes]
-    gene_vectors = counts_df_ecDNA.T
-
-    # Euclidean distance clustering
-    Z = linkage(pdist(gene_vectors, metric="euclidean"), method="average")
-    clusters = fcluster(Z, t=float(cluster_distance_threshold), criterion="distance")
-    # cluster_map = pd.Series(clusters, index=ecDNA_genes)
-
-    # Add to dataframe
-    prediction_df["cluster"] = -1
-    prediction_df.loc[prediction_df["gene"].isin(ecDNA_genes), "cluster"] = clusters
-
-    return prediction_df
-
 
 def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_copy_number, max_percentile, 
-               filter_copy_number, cluster_distance_threshold, no_plot) :
+               filter_copy_number, no_plot) :
     out_log = []
     # Detect extension
     out_log.append(f'Running {file}')
@@ -185,8 +145,7 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
+            filter_copy_number
         )
     elif mode == "MEX" :
         predictions = predict_ecdna_from_mex(
@@ -195,8 +154,7 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
+            filter_copy_number
         )
     else :
         predictions = predict_ecdna_from_anndata(
@@ -205,8 +163,7 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
+            filter_copy_number
         )
 
     os.makedirs(output_dir, exist_ok=True)
