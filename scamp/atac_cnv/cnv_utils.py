@@ -19,7 +19,7 @@ from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
 
-def get_assembly_fasta(assembly, cache_dir=f"../reference/.fa_genomes"):
+def get_assembly_fasta(assembly, cache_dir=None):
     """Read in the FASTA genome.
 
     Downloads and decompresses the FASTA file if it is not already
@@ -34,7 +34,9 @@ def get_assembly_fasta(assembly, cache_dir=f"../reference/.fa_genomes"):
         f"https://hgdownload.soe.ucsc.edu/goldenPath/{assembly}/bigZips/{assembly}.fa.gz"
     )
 
-    cache_dir = os.path.expanduser(cache_dir)
+    if cache_dir is None:
+        cache_dir = os.path.join(os.path.dirname(__file__), "reference/.fa_genomes")
+
     os.makedirs(cache_dir, exist_ok=True)
 
     fa_gz = os.path.join(cache_dir, f"{assembly}.fa.gz")
@@ -416,12 +418,12 @@ def get_windows(genome, window_size, step_size, reference_blacklist):
 
         # Export
         windows_m_blacklist.to_csv(
-            f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv",
+            f"{reference_blacklist}_{window_size}_{step_size}.tsv",
             sep="\t",
             index=False,
         )
         windows_m_blacklist = pd.read_csv(
-            f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv", sep="\t"
+            f"{reference_blacklist}_{window_size}_{step_size}.tsv", sep="\t"
         )
         end = time.time()
         print(f"Window creation time: {end - start:.2f} seconds", flush=True)
@@ -429,7 +431,7 @@ def get_windows(genome, window_size, step_size, reference_blacklist):
     # If file already created, just read it in
     else:
         windows_m_blacklist = pd.read_csv(
-            f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv", sep="\t"
+            f"{reference_blacklist}_{window_size}_{step_size}.tsv", sep="\t"
         )
 
     # Remove chromosomes

@@ -58,25 +58,6 @@ def simple_windows():
         ]
     )
 
-
-# def test_calculate_fractions_handles_origin_and_offset_windows():
-#     windows = pd.DataFrame(
-#         [
-#             {"Chromosome": "chr1", "Start": 0, "End": 4},
-#             {"Chromosome": "chr1", "Start": 2, "End": 6},
-#         ]
-#     )
-
-#     result = cnv_utils.calculate_fractions(windows, _prefix_sums("ACGTNN"))
-
-#     assert result.loc[0, "GC_fraction"] == pytest.approx(0.5)
-#     assert result.loc[0, "AT_fraction"] == pytest.approx(0.5)
-#     assert result.loc[0, "N_fraction"] == pytest.approx(0.0)
-#     assert result.loc[1, "GC_fraction"] == pytest.approx(0.25)
-#     assert result.loc[1, "AT_fraction"] == pytest.approx(0.25)
-#     assert result.loc[1, "N_fraction"] == pytest.approx(0.5)
-
-
 def test_subtract_hits_all_overlap_cases():
     main = pr.PyRanges(
         pd.DataFrame(
@@ -149,41 +130,6 @@ def test_make_windows_slides_standard_chromosomes_and_applies_blacklist(tmp_path
     chr2 = result[result["Chromosome"] == "chr2"]
     np.testing.assert_allclose(chr2["gc_count"].to_numpy(), 3000)
     np.testing.assert_allclose(chr2["at_count"].to_numpy(), 0)
-
-
-# def test_get_windows_recombines_cached_segments_and_filters_bad_windows(tmp_path):
-#     blacklist = tmp_path / "blacklist.bed"
-#     cached_windows = tmp_path / "blacklist.bed_100_50.tsv"
-#     pd.DataFrame(
-#         [
-#             ["chr1", 0, 40, "chr1:0-100", 0.25, 0.75, 0.0],
-#             ["chr1", 60, 100, "chr1:0-100", 0.75, 0.25, 0.0],
-#             ["chr1", 100, 200, "chr1:100-200", 0.5, 0.49, 0.01],
-#             ["chrX", 0, 100, "chrX:0-100", 0.5, 0.5, 0.0],
-#         ],
-#         columns=[
-#             "Chromosome",
-#             "Start",
-#             "End",
-#             "window_id",
-#             "GC_fraction",
-#             "AT_fraction",
-#             "N_fraction",
-#         ],
-#     ).to_csv(cached_windows, sep="\t", index=False)
-
-#     result = cnv_utils.get_windows(None, 100, 50, blacklist)
-
-#     assert result.shape[0] == 1
-#     row = result.iloc[0]
-#     assert row["window_id"] == "chr1:0-100"
-#     assert row["Chromosome"] == "chr1"
-#     assert row["Start"] == 0
-#     assert row["End"] == 100
-#     assert row["GC_fraction"] == pytest.approx(0.5)
-#     assert row["AT_fraction"] == pytest.approx(0.5)
-#     assert row["N_fraction"] == pytest.approx(0.0)
-#     assert row["tile_name"] == "chr1-0:100"
 
 
 def test_get_whitelists_parses_sample_prefixed_barcodes(tmp_path):
