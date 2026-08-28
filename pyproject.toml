@@ -48,7 +48,9 @@ dependencies = [
     "tqdm",
     "typer",
     "xarray>=2023.2.0",
-    "cellxgene"
+    "cellxgene",
+    "pyfaidx",
+    "scanpy"
 ]
 
 
