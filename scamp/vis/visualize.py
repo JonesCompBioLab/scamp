@@ -160,7 +160,7 @@ def setup_copynumber(copy_number_file) :
         sep = ','
 
     # Create anndata from tsv
-    counts_df = pd.read_csv(copy_number_file, sep=sep)
+    counts_df = pd.read_csv(copy_number_file, sep=sep, index_col=0)
     var = pd.DataFrame({
         'idx': range(1, counts_df.shape[1] + 1)
     }, index=counts_df.columns)
