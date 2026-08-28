@@ -32,8 +32,8 @@ You can also invoke `scamp` modules from the command line by running
 
 Currently there are three command line modules you can run:
 
-* `scamp atac-cnv`: Computes copy-numbers across genes from a scATAC fragments files.
-* `scamp atac-cnv-legacy`: Computes copy-numbers across genes using a legacy implementation in R. Supports additional genome builds (hg38, hg19, and mm10). 
+* `scamp atac-cnv`: Computes copy-numbers across genes from a scATAC fragments files. Supports genome builds hg38, hg19, mm10, and mm39. 
+* `scamp atac-cnv-legacy`: Computes copy-numbers across genes using a legacy implementation in R. Supports genome builds hg38, hg19, and mm10. 
 * `scamp predict`: Predicts ecDNA status from copy-number data.
 * `scamp visualize`: Visualizes results on cellxgene after running `predict`
 

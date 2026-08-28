@@ -58,25 +58,6 @@ def simple_windows():
         ]
     )
 
-
-def test_calculate_fractions_handles_origin_and_offset_windows():
-    windows = pd.DataFrame(
-        [
-            {"Chromosome": "chr1", "Start": 0, "End": 4},
-            {"Chromosome": "chr1", "Start": 2, "End": 6},
-        ]
-    )
-
-    result = cnv_utils.calculate_fractions(windows, _prefix_sums("ACGTNN"))
-
-    assert result.loc[0, "GC_fraction"] == pytest.approx(0.5)
-    assert result.loc[0, "AT_fraction"] == pytest.approx(0.5)
-    assert result.loc[0, "N_fraction"] == pytest.approx(0.0)
-    assert result.loc[1, "GC_fraction"] == pytest.approx(0.25)
-    assert result.loc[1, "AT_fraction"] == pytest.approx(0.25)
-    assert result.loc[1, "N_fraction"] == pytest.approx(0.5)
-
-
 def test_subtract_hits_all_overlap_cases():
     main = pr.PyRanges(
         pd.DataFrame(
@@ -143,49 +124,12 @@ def test_make_windows_slides_standard_chromosomes_and_applies_blacklist(tmp_path
 
     assert "chrM" not in set(result["Chromosome"])
     chr1 = result[result["Chromosome"] == "chr1"]
-    np.testing.assert_allclose(chr1["GC_fraction"].to_numpy(), 0.5)
-    np.testing.assert_allclose(chr1["AT_fraction"].to_numpy(), 0.5)
-    np.testing.assert_allclose(chr1["N_fraction"].to_numpy(), 0.0)
+    np.testing.assert_allclose(chr1["gc_count"].to_numpy(), [1400, 400, 500])
+    np.testing.assert_allclose(chr1["at_count"].to_numpy(), [1400, 400, 500])
 
     chr2 = result[result["Chromosome"] == "chr2"]
-    np.testing.assert_allclose(chr2["GC_fraction"].to_numpy(), 1.0)
-    np.testing.assert_allclose(chr2["AT_fraction"].to_numpy(), 0.0)
-    np.testing.assert_allclose(chr2["N_fraction"].to_numpy(), 0.0)
-
-
-def test_get_windows_recombines_cached_segments_and_filters_bad_windows(tmp_path):
-    blacklist = tmp_path / "blacklist.bed"
-    cached_windows = tmp_path / "blacklist.bed_100_50.tsv"
-    pd.DataFrame(
-        [
-            ["chr1", 0, 40, "chr1:0-100", 0.25, 0.75, 0.0],
-            ["chr1", 60, 100, "chr1:0-100", 0.75, 0.25, 0.0],
-            ["chr1", 100, 200, "chr1:100-200", 0.5, 0.49, 0.01],
-            ["chrX", 0, 100, "chrX:0-100", 0.5, 0.5, 0.0],
-        ],
-        columns=[
-            "Chromosome",
-            "Start",
-            "End",
-            "window_id",
-            "GC_fraction",
-            "AT_fraction",
-            "N_fraction",
-        ],
-    ).to_csv(cached_windows, sep="\t", index=False)
-
-    result = cnv_utils.get_windows(None, 100, 50, blacklist)
-
-    assert result.shape[0] == 1
-    row = result.iloc[0]
-    assert row["window_id"] == "chr1:0-100"
-    assert row["Chromosome"] == "chr1"
-    assert row["Start"] == 0
-    assert row["End"] == 100
-    assert row["GC_fraction"] == pytest.approx(0.5)
-    assert row["AT_fraction"] == pytest.approx(0.5)
-    assert row["N_fraction"] == pytest.approx(0.0)
-    assert row["tile_name"] == "chr1-0:100"
+    np.testing.assert_allclose(chr2["gc_count"].to_numpy(), 3000)
+    np.testing.assert_allclose(chr2["at_count"].to_numpy(), 0)
 
 
 def test_get_whitelists_parses_sample_prefixed_barcodes(tmp_path):
@@ -298,3 +242,65 @@ def test_create_cellxwindows_rejects_unexpected_fragment_columns(
             minFrags=1,
             batch_size=1,
         )
+
+
+
+@pytest.fixture
+def fractured_windows():
+    return pd.DataFrame(
+        [
+            {
+                "Chromosome": "chr1",
+                "Start": 0,
+                "End": 30,
+                "window_id": "chr1:0-100",
+                "tile_name": "chr1:0-30",
+                "gc_count" : 10,
+                "at_count" : 5,
+                "length" : 30
+            },
+            {
+                "Chromosome": "chr1",
+                "Start": 35,
+                "End": 100,
+                "window_id": "chr1:0-100",
+                "tile_name": "chr1:80-100",
+                "gc_count" : 4,
+                "at_count" : 7,
+                "length" : 20
+
+            }
+        ]
+    )
+
+
+
+@pytest.fixture
+def cellxwindows_df():
+    return pd.DataFrame(
+        [
+            {
+                "Cell": "CELL1",
+                "chr1:0-30" : 5,
+                "chr1:80-100": 4,
+            },
+            {
+                "Cell": "CELL2",
+                "chr1:0-30" : 2,
+                "chr1:80-100": 12,
+            }
+        ], index=["CELL1", "CELL2"]
+    )
+
+def test_combine_split_windows(fractured_windows, cellxwindows_df) :
+    windows_agg, cxw_agg = cnv_utils.combine_split_windows(
+        fractured_windows, 100, cellxwindows_df
+    )
+    assert len(windows_agg) == 1
+    assert windows_agg["window_id"].iloc[0] == "chr1:0-100"
+    assert windows_agg["gc_count"].iloc[0] == 14
+    assert windows_agg["GC_fraction"].iloc[0] == 0.14
+    assert windows_agg["N_fraction"].iloc[0] == 0.24
+    assert cxw_agg["chr1:0-100"].iloc[0] == 9
+    assert cxw_agg["chr1:0-100"].iloc[1] == 14
+
