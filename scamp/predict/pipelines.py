@@ -23,7 +23,6 @@ from scamp import plotting
 
 def predict_ecdna_from_anndata(
     anndata_file: str,
-    out_log: str,
     saved_model_directory: str,
     whitelist_file: str,
     decision_rule: float,
@@ -94,7 +93,6 @@ def predict_ecdna_from_mex(
 
 def predict_ecdna_from_copy_number(
     counts_file: str,
-    out_log: str,
     saved_model_directory: str,
     whitelist_file: str,
     decision_rule: float,
