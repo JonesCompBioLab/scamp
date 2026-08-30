@@ -22,69 +22,137 @@ from scamp import plotting
 
 
 def predict_ecdna_from_anndata(
-    out_log, anndata_file,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number
-):
+    anndata_file: str,
+    out_log: str,
+    saved_model_directory: str,
+    whitelist_file: str,
+    decision_rule: float,
+    min_copy_number: float,
+    max_percentile: float,
+    filter_copy_number: float
+) -> pd.DataFrame:
+    """Runs prediction pipeline from AnnData input.
+
+    Args:
+        anndata_file: Path to AnnData File
+        saved_model_directory: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+
+    Returns:
+        A pandas DataFrame with predictions and probabilities for each gene.
+    """
+
     counts_df = io.read_anndata_file(anndata_file)
-    return predict(out_log, counts_df,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number)
+    predictions = predict(counts_df,
+        saved_model_directory, whitelist_file,
+        decision_rule,
+        min_copy_number,
+        max_percentile,
+        filter_copy_number)
+
+    return predictions 
 
 
 def predict_ecdna_from_mex(
-    out_log, mex_folder,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number
-):
+    mex_folder: str,
+    saved_model_directory: str,
+    whitelist_file: str,
+    decision_rule: float,
+    min_copy_number: float,
+    max_percentile: float,
+    filter_copy_number: float
+) -> pd.DataFrame:
+    """Runs prediction pipeline from MEX input.
+
+    Args:
+        mex_folder: Path to MEX folder
+        saved_model_directory: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+
+    Returns:
+        A pandas DataFrame with predictions and probabilities for each gene.
+    """
+
     counts_df = io.read_mex_file(mex_folder)
 
-    return predict(out_log, counts_df,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number)
-
-
+    predictions = predict(counts_df,
+        saved_model_directory, whitelist_file,
+        decision_rule,
+        min_copy_number,
+        max_percentile,
+        filter_copy_number)
+    
+    return predictions
 
 def predict_ecdna_from_copy_number(
-    out_log, counts_file,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number
-):
+    counts_file: str,
+    out_log: str,
+    saved_model_directory: str,
+    whitelist_file: str,
+    decision_rule: float,
+    min_copy_number: float,
+    max_percentile: float,
+    filter_copy_number: float
+) -> pd.DataFrame:
+    """Runs prediction pipeline from copy-number counts TSV.
+
+    Args:
+        counts_file: Path to copy-number counts file
+        saved_model_directory: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+
+    Returns:
+        A pandas DataFrame with predictions and probabilities for each gene.
+    """
 
     counts_df = io.read_copy_numbers_file(counts_file)
-    return predict(out_log, counts_df,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number)
 
+    predictions = predict(counts_df,
+        saved_model_directory, whitelist_file,
+        decision_rule,
+        min_copy_number,
+        max_percentile,
+        filter_copy_number)
+    
+    return predictions
 
 def predict(
-    out_log,
-    counts_df,
-    saved_model_directory,
-    whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number
-) :
+    counts_df: pd.DataFrame,
+    saved_model_directory: str,
+    whitelist_file: str,
+    decision_rule: float,
+    min_copy_number: float,
+    max_percentile: float,
+    filter_copy_number: float
+) -> pd.DataFrame:
+    """Runs prediction pipeline.
+
+    Args:
+        counts_df: A pandas DataFrame with copy-number counts
+        saved_model_directory: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+
+    Returns:
+        A pandas DataFrame with predictions and probabilities for each gene.
+    """
+
+
     model = models.SCAMP.load(saved_model_directory)
 
     if whitelist_file:
@@ -110,8 +178,34 @@ def predict(
 
     return prediction_df
 
-def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_copy_number, max_percentile, 
-               filter_copy_number, no_plot) :
+def run_sample(
+    file,
+    output_dir,
+    model_file,
+    whitelist_file,
+    decision_rule,
+    min_copy_number,
+    max_percentile, 
+    filter_copy_number,
+    no_plot
+) -> list:
+    """Runs the prediction pipeline on a single sample and outputs predictions and visualizations.
+
+    Args:
+        file: Path to input file (AnnData, MEX, or copy-number counts) 
+        output_dir: Directory to save predictions and visualizations
+        model_file: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+        no_plot: If True, do not generate visualizations
+    
+    Returns:
+        A list of log messages generated during the prediction process.
+    """
+
     out_log = []
     # Detect extension
     out_log.append(f'Running {file}')
@@ -140,7 +234,7 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
     # Call different wrapper for each prediction type
     if mode == "copynumber":
         predictions = predict_ecdna_from_copy_number(
-            out_log, file,
+            file,
             model_file, whitelist_file,
             decision_rule,
             min_copy_number,
@@ -149,7 +243,7 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
         )
     elif mode == "MEX" :
         predictions = predict_ecdna_from_mex(
-            out_log, file,
+            file,
             model_file, whitelist_file,
             decision_rule,
             min_copy_number,
@@ -158,7 +252,7 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
         )
     else :
         predictions = predict_ecdna_from_anndata(
-            out_log, file,
+            file,
             model_file, whitelist_file,
             decision_rule,
             min_copy_number,
