@@ -329,17 +329,18 @@ def predict_ecdna(
         print("Error: requires copy-numbers-file or copy-numbers-folder")
 
     if mode == "copynumber":
-        predictions = predict.predict_ecdna_from_copy_number(
+
+        predictions = predict.predict_ecDNA_in_sample(
             copy_numbers_file,
+            output_dir,
             model_file,
+            whitelist_file,
             decision_rule,
             min_copy_number,
             max_percentile,
             filter_copy_number,
-            whitelist_file
+            no_plot,
         )
-
-        os.makedirs(output_dir)
 
         predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
         if not no_plot:

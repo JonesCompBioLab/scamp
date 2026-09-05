@@ -6,7 +6,11 @@ distributions.
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+import logging
 import os
+from functools import wraps
+import inspect
+from pprint import pformat
 import numpy as np
 import pandas as pd
 import torch
@@ -19,6 +23,42 @@ from scamp import models
 from scamp.predict import utilities
 from scamp import plotting
 
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+def log_prediction_run(function):
+    """Log the lifecycle of a prediction run to its output directory."""
+    @wraps(function)
+    def wrapper(file, output_dir, *args, **kwargs):
+        os.makedirs(output_dir, exist_ok=True)
+        file_handler = logging.FileHandler(Path(output_dir) / "scamp.log")
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(file_handler)
+        start = time.perf_counter()
+
+        try:
+            parameters = inspect.signature(function).bind(
+                file, output_dir, *args, **kwargs
+            )
+            parameters.apply_defaults()
+            logger.info("Run parameters:\n%s", pformat(parameters.arguments))
+            logger.info("Running prediction for %s", file)
+            predictions = function(file, output_dir, *args, **kwargs)
+        except Exception:
+            logger.exception("Prediction failed for %s", file)
+            raise
+        else:
+            logger.info("File %s completed in %.2f seconds", file, time.perf_counter() - start)
+            return predictions
+        finally:
+            logger.removeHandler(file_handler)
+            file_handler.close()
+
+    return wrapper
 
 
 def predict_ecdna_from_anndata(
@@ -46,7 +86,7 @@ def predict_ecdna_from_anndata(
     """
 
     counts_df = io.read_anndata_file(anndata_file)
-    predictions = predict(counts_df,
+    predictions = _predict_ecDNA(counts_df,
         saved_model_directory, whitelist_file,
         decision_rule,
         min_copy_number,
@@ -82,7 +122,7 @@ def predict_ecdna_from_mex(
 
     counts_df = io.read_mex_file(mex_folder)
 
-    predictions = predict(counts_df,
+    predictions = _predict_ecDNA(counts_df,
         saved_model_directory, whitelist_file,
         decision_rule,
         min_copy_number,
@@ -117,7 +157,7 @@ def predict_ecdna_from_copy_number(
 
     counts_df = io.read_copy_numbers_file(counts_file)
 
-    predictions = predict(counts_df,
+    predictions = _predict_ecDNA(counts_df,
         saved_model_directory, whitelist_file,
         decision_rule,
         min_copy_number,
@@ -126,7 +166,7 @@ def predict_ecdna_from_copy_number(
     
     return predictions
 
-def predict(
+def _predict_ecDNA(
     counts_df: pd.DataFrame,
     saved_model_directory: str,
     whitelist_file: str,
@@ -176,7 +216,8 @@ def predict(
 
     return prediction_df
 
-def run_sample(
+@log_prediction_run
+def predict_ecDNA_in_sample(
     file,
     output_dir,
     model_file,
@@ -185,8 +226,8 @@ def run_sample(
     min_copy_number,
     max_percentile, 
     filter_copy_number,
-    no_plot
-) -> list:
+    no_plot,
+) -> pd.DataFrame | None:
     """Runs the prediction pipeline on a single sample and outputs predictions and visualizations.
 
     Args:
@@ -201,34 +242,32 @@ def run_sample(
         no_plot: If True, do not generate visualizations
     
     Returns:
-        A list of log messages generated during the prediction process.
+        A pandas DataFrame with predictions, or ``None`` when the input is skipped.
     """
 
-    out_log = []
     # Detect extension
-    out_log.append(f'Running {file}')
     p = Path(file)
-    if os.path.isdir(p) :
+    if os.path.isdir(p):
         has_matrix = any(p.glob("matrix.mtx*"))
         has_barcodes = any(p.glob("barcodes.tsv*"))
-        if has_matrix and has_barcodes :
+        if has_matrix and has_barcodes:
             mode = "MEX"
-        else :
-            out_log.append(f"{file} is non-MEX folder, skipping")
-            return out_log
+        else:
+            logger.warning("%s is a non-MEX folder; skipping", file)
+            return None
 
-    else :
+    else:
         copy_numbers_ext = file.split('.')[-1]
-        if copy_numbers_ext == "h5ad" :
+        if copy_numbers_ext == "h5ad":
             mode = "anndata"
-        elif copy_numbers_ext == 'csv' or copy_numbers_ext == 'tsv' :
+        elif copy_numbers_ext == "csv" or copy_numbers_ext == "tsv":
             mode = "copynumber"
-        else :
-            out_log.append(f"{file} does not have extension h5ad, tsv, or csv. Skipping")
-            return
+        else:
+            logger.warning(
+                "%s does not have extension h5ad, tsv, or csv; skipping", file
+            )
+            return None
 
-    out_log.append(f"Running {file}")
-    start = time.time()
     # Call different wrapper for each prediction type
     if mode == "copynumber":
         predictions = predict_ecdna_from_copy_number(
@@ -239,7 +278,7 @@ def run_sample(
             max_percentile,
             filter_copy_number
         )
-    elif mode == "MEX" :
+    elif mode == "MEX":
         predictions = predict_ecdna_from_mex(
             file,
             model_file, whitelist_file,
@@ -263,7 +302,8 @@ def run_sample(
     # Output predictions and visualizations
     filename = Path(file).stem
 
-    predictions.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep='\t')
+    predictions.to_csv(f"{output_dir}/ecDNA_predictions_{filename}.tsv", sep='\t')
+
     if not no_plot:
         plotting.plot_scamp_predictions_plotly(
             predictions,
@@ -271,9 +311,5 @@ def run_sample(
             title=f"scAmp predictions for {filename.split('/')[-1]}"
         )
 
-    end = time.time()
-
-
-    out_log.append(f"File {file} completed in {end - start:.2f} seconds")
-    return out_log
+    return predictions
 
