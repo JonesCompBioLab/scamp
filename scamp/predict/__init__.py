@@ -1,1 +1,1 @@
-from .pipelines import run_sample
+from .pipelines import predict_ecDNA_in_sample

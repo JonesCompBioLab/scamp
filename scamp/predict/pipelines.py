@@ -6,7 +6,11 @@ distributions.
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+import logging
 import os
+from functools import wraps
+import inspect
+from pprint import pformat
 import numpy as np
 import pandas as pd
 import torch
@@ -19,81 +23,174 @@ from scamp import models
 from scamp.predict import utilities
 from scamp import plotting
 
-from scipy.spatial.distance import pdist, squareform
-from scipy.cluster.hierarchy import linkage, fcluster
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+def log_prediction_run(function):
+    """Log the lifecycle of a prediction run to its output directory."""
+    @wraps(function)
+    def wrapper(file, output_dir, *args, **kwargs):
+        os.makedirs(output_dir, exist_ok=True)
+        file_handler = logging.FileHandler(Path(output_dir) / "scamp.log")
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(file_handler)
+        start = time.perf_counter()
+
+        try:
+            parameters = inspect.signature(function).bind(
+                file, output_dir, *args, **kwargs
+            )
+            parameters.apply_defaults()
+            logger.info("Run parameters:\n%s", pformat(parameters.arguments))
+            logger.info("Running prediction for %s", file)
+            predictions = function(file, output_dir, *args, **kwargs)
+        except Exception:
+            logger.exception("Prediction failed for %s", file)
+            raise
+        else:
+            logger.info("File %s completed in %.2f seconds", file, time.perf_counter() - start)
+            return predictions
+        finally:
+            logger.removeHandler(file_handler)
+            file_handler.close()
+
+    return wrapper
 
 
 def predict_ecdna_from_anndata(
-    out_log, anndata_file,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
-):
+    anndata_file: str,
+    saved_model_directory: str,
+    whitelist_file: str,
+    decision_rule: float,
+    min_copy_number: float,
+    max_percentile: float,
+    filter_copy_number: float
+) -> pd.DataFrame:
+    """Runs prediction pipeline from AnnData input.
+
+    Args:
+        anndata_file: Path to AnnData File
+        saved_model_directory: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+
+    Returns:
+        A pandas DataFrame with predictions and probabilities for each gene.
+    """
+
     counts_df = io.read_anndata_file(anndata_file)
-    return predict(out_log, counts_df,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold)
+    predictions = _predict_ecDNA(counts_df,
+        saved_model_directory, whitelist_file,
+        decision_rule,
+        min_copy_number,
+        max_percentile,
+        filter_copy_number)
+
+    return predictions 
 
 
 def predict_ecdna_from_mex(
-    out_log, mex_folder,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
-):
+    mex_folder: str,
+    saved_model_directory: str,
+    whitelist_file: str,
+    decision_rule: float,
+    min_copy_number: float,
+    max_percentile: float,
+    filter_copy_number: float
+) -> pd.DataFrame:
+    """Runs prediction pipeline from MEX input.
+
+    Args:
+        mex_folder: Path to MEX folder
+        saved_model_directory: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+
+    Returns:
+        A pandas DataFrame with predictions and probabilities for each gene.
+    """
+
     counts_df = io.read_mex_file(mex_folder)
 
-    return predict(out_log, counts_df,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold)
-
-
+    predictions = _predict_ecDNA(counts_df,
+        saved_model_directory, whitelist_file,
+        decision_rule,
+        min_copy_number,
+        max_percentile,
+        filter_copy_number)
+    
+    return predictions
 
 def predict_ecdna_from_copy_number(
-    out_log, counts_file,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
-):
+    counts_file: str,
+    saved_model_directory: str,
+    whitelist_file: str,
+    decision_rule: float,
+    min_copy_number: float,
+    max_percentile: float,
+    filter_copy_number: float
+) -> pd.DataFrame:
+    """Runs prediction pipeline from copy-number counts TSV.
+
+    Args:
+        counts_file: Path to copy-number counts file
+        saved_model_directory: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+
+    Returns:
+        A pandas DataFrame with predictions and probabilities for each gene.
+    """
 
     counts_df = io.read_copy_numbers_file(counts_file)
-    return predict(out_log, counts_df,
-    saved_model_directory, whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold)
+
+    predictions = _predict_ecDNA(counts_df,
+        saved_model_directory, whitelist_file,
+        decision_rule,
+        min_copy_number,
+        max_percentile,
+        filter_copy_number)
+    
+    return predictions
+
+def _predict_ecDNA(
+    counts_df: pd.DataFrame,
+    saved_model_directory: str,
+    whitelist_file: str,
+    decision_rule: float,
+    min_copy_number: float,
+    max_percentile: float,
+    filter_copy_number: float
+) -> pd.DataFrame:
+    """Runs prediction pipeline.
+
+    Args:
+        counts_df: A pandas DataFrame with copy-number counts
+        saved_model_directory: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+
+    Returns:
+        A pandas DataFrame with predictions and probabilities for each gene.
+    """
 
 
-def predict(
-    out_log,
-    counts_df,
-    saved_model_directory,
-    whitelist_file,
-    decision_rule,
-    min_copy_number,
-    max_percentile,
-    filter_copy_number,
-    cluster_distance_threshold
-) :
     model = models.SCAMP.load(saved_model_directory)
 
     if whitelist_file:
@@ -117,96 +214,87 @@ def predict(
     prediction_df["proba"] = probas
     prediction_df["pred"] = prediction_df["proba"] >= decision_rule
 
-    prediction_df = cluster(out_log, prediction_df, counts_df, cluster_distance_threshold)
-
     return prediction_df
 
-def cluster (
-    out_log,
-    prediction_df,
-    counts_df,
-    cluster_distance_threshold   
-) :
-    # Get each ecDNA's copy numbers as a vector
-    ecDNA_genes = prediction_df.loc[prediction_df["pred"], "gene"].tolist()
+@log_prediction_run
+def predict_ecDNA_in_sample(
+    file,
+    output_dir,
+    model_file,
+    whitelist_file,
+    decision_rule,
+    min_copy_number,
+    max_percentile, 
+    filter_copy_number,
+    no_plot,
+) -> pd.DataFrame | None:
+    """Runs the prediction pipeline on a single sample and outputs predictions and visualizations.
 
-    if len(ecDNA_genes) == 0 :
-        prediction_df["cluster"] = -1
-        out_log.append("No ecDNA detected in sample")
-        return prediction_df
+    Args:
+        file: Path to input file (AnnData, MEX, or copy-number counts) 
+        output_dir: Directory to save predictions and visualizations
+        model_file: Path to saved model directory
+        whitelist_file: Path to whitelist file
+        decision_rule: Likelihood decision rule
+        min_copy_number: Minimum copy-number to consider
+        max_percentile: Maximum percentile to cap copy-numbers
+        filter_copy_number: Drop genes whose mean copy-number is below this threshold
+        no_plot: If True, do not generate visualizations
+    
+    Returns:
+        A pandas DataFrame with predictions, or ``None`` when the input is skipped.
+    """
 
-    counts_df_ecDNA = counts_df[ecDNA_genes]
-    gene_vectors = counts_df_ecDNA.T
-
-    # Euclidean distance clustering
-    Z = linkage(pdist(gene_vectors, metric="euclidean"), method="average")
-    clusters = fcluster(Z, t=float(cluster_distance_threshold), criterion="distance")
-    # cluster_map = pd.Series(clusters, index=ecDNA_genes)
-
-    # Add to dataframe
-    prediction_df["cluster"] = -1
-    prediction_df.loc[prediction_df["gene"].isin(ecDNA_genes), "cluster"] = clusters
-
-    return prediction_df
-
-
-def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_copy_number, max_percentile, 
-               filter_copy_number, cluster_distance_threshold, no_plot) :
-    out_log = []
     # Detect extension
-    out_log.append(f'Running {file}')
     p = Path(file)
-    if os.path.isdir(p) :
+    if os.path.isdir(p):
         has_matrix = any(p.glob("matrix.mtx*"))
         has_barcodes = any(p.glob("barcodes.tsv*"))
-        if has_matrix and has_barcodes :
+        if has_matrix and has_barcodes:
             mode = "MEX"
-        else :
-            out_log.append(f"{file} is non-MEX folder, skipping")
-            return out_log
+        else:
+            logger.warning("%s is a non-MEX folder; skipping", file)
+            return None
 
-    else :
+    else:
         copy_numbers_ext = file.split('.')[-1]
-        if copy_numbers_ext == "h5ad" :
+        if copy_numbers_ext == "h5ad":
             mode = "anndata"
-        elif copy_numbers_ext == 'csv' or copy_numbers_ext == 'tsv' :
+        elif copy_numbers_ext == "csv" or copy_numbers_ext == "tsv":
             mode = "copynumber"
-        else :
-            out_log.append(f"{file} does not have extension h5ad, tsv, or csv. Skipping")
-            return
+        else:
+            logger.warning(
+                "%s does not have extension h5ad, tsv, or csv; skipping", file
+            )
+            return None
 
-    out_log.append(f"Running {file}")
-    start = time.time()
     # Call different wrapper for each prediction type
     if mode == "copynumber":
         predictions = predict_ecdna_from_copy_number(
-            out_log, file,
+            file,
             model_file, whitelist_file,
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
+            filter_copy_number
         )
-    elif mode == "MEX" :
+    elif mode == "MEX":
         predictions = predict_ecdna_from_mex(
-            out_log, file,
+            file,
             model_file, whitelist_file,
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
+            filter_copy_number
         )
     else :
         predictions = predict_ecdna_from_anndata(
-            out_log, file,
+            file,
             model_file, whitelist_file,
             decision_rule,
             min_copy_number,
             max_percentile,
-            filter_copy_number,
-            cluster_distance_threshold
+            filter_copy_number
         )
 
     os.makedirs(output_dir, exist_ok=True)
@@ -214,7 +302,8 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
     # Output predictions and visualizations
     filename = Path(file).stem
 
-    predictions.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep='\t')
+    predictions.to_csv(f"{output_dir}/ecDNA_predictions_{filename}.tsv", sep='\t')
+
     if not no_plot:
         plotting.plot_scamp_predictions_plotly(
             predictions,
@@ -222,9 +311,5 @@ def run_sample(file, output_dir, model_file, whitelist_file, decision_rule, min_
             title=f"scAmp predictions for {filename.split('/')[-1]}"
         )
 
-    end = time.time()
-
-
-    out_log.append(f"File {file} completed in {end - start:.2f} seconds")
-    return out_log
+    return predictions
 

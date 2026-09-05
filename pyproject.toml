@@ -33,6 +33,7 @@ classifiers = [
 ]
 dependencies = [
     "anndata>=0.11",
+    "cellxgene",
     "numpy",
     "pandas",
     "pyfaidx",
@@ -48,7 +49,6 @@ dependencies = [
     "tqdm",
     "typer",
     "xarray>=2023.2.0",
-    "cellxgene"
 ]
 
 
