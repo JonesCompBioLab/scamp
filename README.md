@@ -12,7 +12,7 @@ It consists of three main modules (in progress):
 
 You can install scAmp by cloning this directory and running `pip install .` This should install scAmp and all python dependencies. scAmp should be used with python version >= 3.9.
 
-In addition, if you'd like to use the ATAC CNV module, you should install the following R packages:
+We support CNV quantification in both R and python. If you choose to use the R version (`atac-cnv-legacy`), you'll need to install the following R packages:
 
 * Rutils
 * SummarizedExperiment
@@ -71,4 +71,4 @@ pretrained_model = models.SCAMP.load(pretrained_model_path)
 
 You can cite scAmp with the following paper:
 
-Jones MG, Weiser NE, Hung KL, Yan X, Agarwal S, Luebeck J, Gnanasekar A, Howitt BE, Curtis EJ, Yu K, Rose JC, Kraft K, Amiri VVP, Satpathy L, Bafna V, Mischel PS, Chang HY. scAmp analyzes focal gene amplifications at single-cell resolution. bioRxiv [Preprint]. 2026 Feb 15:2026.02.14.705928. doi: 10.64898/2026.02.14.705928. PMID: 41726899; PMCID: PMC12919090.
+Jones, M.G., Weiser, N.E., Hung, K.L. et al. scAmp enables focal gene amplification analysis from single-cell data. Nat Commun (2026). https://doi.org/10.1038/s41467-026-76417-3
