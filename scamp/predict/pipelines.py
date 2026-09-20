@@ -73,13 +73,17 @@ def predict(
                     result_rows.append({"Gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "Prediction" : prediction})
                     used_vectors[rounded] = {"Gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "Prediction" : prediction}
                 else :
-                    print("Predict method must be one of KNN, GMM, NN. We recommend using KNN")
-                    exit(0)
+                    raise ValueError(
+                        f"Unknown predict method {predict_method!r}; "
+                        "expected one of NN, KNN, GMM."
+                    )
 
     # In case no genes are above threshold
     if len(result_rows) == 0 :
-        print("No genes passed copy number threshold")
-        exit(0)
+        raise ValueError(
+            f"No genes had a mean copy-number above {filter_copy_number}. "
+            "Check the input file, or lower --filter-copy-number."
+        )
 
     prediction_df = pd.DataFrame(result_rows)
 
@@ -114,8 +118,10 @@ def cluster(
         species_to_gene, cell_by_ecDNA = species_deconvolution.cNMF_deconvolution(df_unique, filename, out_log, error_w = error_w, score_cutoff= score_cutoff,
                                                                                   log_dir = log_dir, hier_ddist = hier_ddist, verbose = verbose)
     else :
-        print ("Cluster method must be one of hier, combo, or cNMF. We recommend using combo")
-        exit(0)
+        raise ValueError(
+            f"Unknown deconvolution method {deconvolution_method!r}; "
+            "expected one of hier, cNMF, auto."
+        )
 
     # Add labels back
     for species, genes in species_to_gene.items() :
@@ -162,7 +168,7 @@ def run_sample(file, output_dir, predictions, model_file, whitelist_file, decisi
             mode = "copynumber"
         else :
             out_log.append(f"{file} does not have extension h5ad, tsv, or csv. Skipping")
-            return
+            return out_log
 
     out_log.append(f"Running {file}")
     start = time.time()
