@@ -86,7 +86,7 @@ def setup_anndata(
     # Add cell sets
     add_cell_sets(copy_number_adata, gene_set_df, cn_threshold, cn_percentile_threshold)
 
-    ecdna_obs = adata.obs
+    ecdna_obs = copy_number_adata.obs
     adata = expression_adata.copy()
     adata.var_names_make_unique()
     adata.obs = ecdna_obs
@@ -161,7 +161,7 @@ def setup_expression(
     Args:
         expression_data: Path to expression CSV or TSV file.
         cn_adata: Copy-number anndata object used to subset genes.
-    
+
     Returns:
         An anndata object with expression data for genes present in cn_adata.
     """
