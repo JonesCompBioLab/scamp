@@ -34,6 +34,10 @@ classifiers = [
 dependencies = [
     "anndata>=0.11",
     "cellxgene",
+    "cnmf",
+    "kneed",
+    "matplotlib",
+    "numba",
     "numpy",
     "pandas",
     "pyfaidx",
