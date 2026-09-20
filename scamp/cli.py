@@ -14,6 +14,7 @@ import scanpy as sc
 import typer
 
 from scamp import atac_cnv, vis, plotting, predict
+from scamp.mixins.errors import CLIError
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
@@ -321,12 +322,14 @@ def predict_ecdna(
          float, typer.Option(help="Drop genes whose mean copy-number is below this threshold.")
     ] = 2.5,
     no_plot: Annotated[
-        float, typer.Option(help="Suppress plotting functionality.")
+        bool, typer.Option("--no-plot", help="Suppress plotting functionality.")
     ] = False
 ) -> None:
 
-    if copy_numbers_file is None and copy_numbers_folder is None:
-        print("Error: requires copy-numbers-file or copy-numbers-folder")
+    if copy_numbers_file is None:
+        raise CLIError(
+            "Please provide a copy-numbers file, MEX folder, or anndata file."
+        )
 
     if mode == "copynumber":
 
@@ -341,6 +344,11 @@ def predict_ecdna(
             filter_copy_number,
             no_plot,
         )
+
+        if predictions is None:
+            raise CLIError(
+                f"Could not read copy numbers from {copy_numbers_file}."
+            )
 
         predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
         if not no_plot:
