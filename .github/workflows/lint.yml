@@ -1,0 +1,16 @@
+name: lint
+
+# Fails when code uses a name that is never defined (pyflakes rule F821),
+# e.g. a variable that was renamed but still referenced by its old name.
+on: [push, pull_request]
+
+jobs:
+  undefined-names:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff==0.16.8
+      - run: ruff check --select F821 scamp/
