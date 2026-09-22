@@ -15,6 +15,7 @@ import scanpy as sc
 import typer
 
 from scamp import atac_cnv, vis, plotting, predict
+from scamp.mixins.errors import CLIError
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
@@ -274,7 +275,7 @@ def visualize(
     # Parse expression data
     if os.path.isdir(expression_file):
         # MEX format
-        exp_adata = sc.read_10x_mtx(exp_adata)
+        exp_adata = sc.read_10x_mtx(expression_file)
     else:
         expression_file_ext = expression_file.split(".")[-1]
         if expression_file_ext == "h5ad":
