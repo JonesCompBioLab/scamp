@@ -52,26 +52,26 @@ def predict(
             if rounded in used_vectors :
                 new_row = used_vectors[rounded].copy()
                 out_log.append(f"Skipping {gene}, Using: {used_vectors[rounded]}")
-                new_row["Gene"] = gene
+                new_row["gene"] = gene
                 result_rows.append(new_row)
             else :
                 if predict_method == "NN" :
                     prediction, proba = predict_methods.NN_ecDNA_predict(model, counts_df[gene], out_log, np.array([gene]), decision_rule, verbose)
-                    result_rows.append({"Gene" : gene, "Proba" : proba, "Prediction" : prediction})
-                    used_vectors[rounded] = {"Gene" : gene, "Proba" : proba, "Prediction" : prediction}
+                    result_rows.append({"gene" : gene, "Proba" : proba, "pred" : prediction})
+                    used_vectors[rounded] = {"gene" : gene, "Proba" : proba, "pred" : prediction}
                 elif predict_method == "GMM" :
                     prediction, mean, var, weight = predict_methods.GMM_ecDNA_predict(model, counts_df[gene], out_log, one_thresh=one_thresh, genes = np.array([gene]), 
                                                                                     decision_rule=decision_rule, kneedle_coeff=kneedle_coeff, var_scale = var_scale, 
                                                                                     min_weight = min_weight, verbose = verbose)
-                    result_rows.append({"Gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "Prediction" : prediction})
-                    used_vectors[rounded] = {"Gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "Prediction" : prediction}
+                    result_rows.append({"gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "pred" : prediction})
+                    used_vectors[rounded] = {"gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "pred" : prediction}
 
                 elif predict_method == "KNN" :
                     prediction, num_ecDNA_pos_cells = predict_methods.KNN_ecDNA_predict(model, counts_df[gene], out_log, np.array([gene]), one_thresh = one_thresh,
                                                                                 kneedle_coeff=kneedle_coeff, k_mult = k_mult,
                                                                                 var_scale = var_scale, decision_rule = decision_rule, verbose = verbose)
-                    result_rows.append({"Gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "Prediction" : prediction})
-                    used_vectors[rounded] = {"Gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "Prediction" : prediction}
+                    result_rows.append({"gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "pred" : prediction})
+                    used_vectors[rounded] = {"gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "pred" : prediction}
                 else :
                     raise ValueError(
                         f"Unknown predict method {predict_method!r}; "
@@ -96,7 +96,7 @@ def cluster(
 ) :
     # Get only the ecDNA positive genes
     predict_df['Species'] = "None"
-    ecDNA_genes = predict_df[predict_df["Prediction"] == True]["Gene"].tolist()
+    ecDNA_genes = predict_df[predict_df["pred"] == True]["gene"].tolist()
     ecDNA_genes = list(dict.fromkeys(ecDNA_genes))
 
     # If no genes are ecDNA positive, just return
@@ -127,7 +127,7 @@ def cluster(
     for species, genes in species_to_gene.items() :
         for gene in genes :
             for mapped_gene in column_groups[gene] :
-                mask = predict_df["Gene"] == mapped_gene
+                mask = predict_df["gene"] == mapped_gene
 
                 current = predict_df.loc[mask, "Species"].iloc[0]
 
