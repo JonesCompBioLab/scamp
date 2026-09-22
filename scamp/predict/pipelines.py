@@ -109,7 +109,14 @@ def cluster(
     df_unique, column_groups = species_deconvolution.remove_duplicates(counts_df_ecDNA)
 
 
-    if deconvolution_method == "hier" :
+    # One distinct copy-number profile is one species. The methods below need at least two
+    # profiles to compare (np.corrcoef of a single column is a scalar), so assign it directly;
+    # this is the usage hier_deconvolution and _hier_nnls give for a single profile.
+    if df_unique.shape[1] == 1 :
+        species_to_gene = {"pred_ecDNA_1" : list(df_unique.columns)}
+        cell_by_ecDNA = (df_unique - 2).clip(lower=0)
+        cell_by_ecDNA.columns = ["pred_ecDNA_1"]
+    elif deconvolution_method == "hier" :
         species_to_gene, cell_by_ecDNA = species_deconvolution.hier_deconvolution(df_unique, hier_ddist)
     elif deconvolution_method == "auto" :
         species_to_gene, cell_by_ecDNA = species_deconvolution.combo_deconvolution(df_unique, out_log, cNMF_thresh, filename, error_w = error_w, 
