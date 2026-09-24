@@ -52,34 +52,38 @@ def predict(
             if rounded in used_vectors :
                 new_row = used_vectors[rounded].copy()
                 out_log.append(f"Skipping {gene}, Using: {used_vectors[rounded]}")
-                new_row["Gene"] = gene
+                new_row["gene"] = gene
                 result_rows.append(new_row)
             else :
                 if predict_method == "NN" :
                     prediction, proba = predict_methods.NN_ecDNA_predict(model, counts_df[gene], out_log, np.array([gene]), decision_rule, verbose)
-                    result_rows.append({"Gene" : gene, "Proba" : proba, "Prediction" : prediction})
-                    used_vectors[rounded] = {"Gene" : gene, "Proba" : proba, "Prediction" : prediction}
+                    result_rows.append({"gene" : gene, "Proba" : proba, "pred" : prediction})
+                    used_vectors[rounded] = {"gene" : gene, "Proba" : proba, "pred" : prediction}
                 elif predict_method == "GMM" :
                     prediction, mean, var, weight = predict_methods.GMM_ecDNA_predict(model, counts_df[gene], out_log, one_thresh=one_thresh, genes = np.array([gene]), 
                                                                                     decision_rule=decision_rule, kneedle_coeff=kneedle_coeff, var_scale = var_scale, 
                                                                                     min_weight = min_weight, verbose = verbose)
-                    result_rows.append({"Gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "Prediction" : prediction})
-                    used_vectors[rounded] = {"Gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "Prediction" : prediction}
+                    result_rows.append({"gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "pred" : prediction})
+                    used_vectors[rounded] = {"gene" : gene, "DistVar" : var, "DistMean" : mean, "Weight" : weight, "pred" : prediction}
 
                 elif predict_method == "KNN" :
                     prediction, num_ecDNA_pos_cells = predict_methods.KNN_ecDNA_predict(model, counts_df[gene], out_log, np.array([gene]), one_thresh = one_thresh,
                                                                                 kneedle_coeff=kneedle_coeff, k_mult = k_mult,
                                                                                 var_scale = var_scale, decision_rule = decision_rule, verbose = verbose)
-                    result_rows.append({"Gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "Prediction" : prediction})
-                    used_vectors[rounded] = {"Gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "Prediction" : prediction}
+                    result_rows.append({"gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "pred" : prediction})
+                    used_vectors[rounded] = {"gene" : gene, "Num PosCells" : num_ecDNA_pos_cells, "pred" : prediction}
                 else :
-                    print("Predict method must be one of KNN, GMM, NN. We recommend using KNN")
-                    exit(0)
+                    raise ValueError(
+                        f"Unknown predict method {predict_method!r}; "
+                        "expected one of NN, KNN, GMM."
+                    )
 
     # In case no genes are above threshold
     if len(result_rows) == 0 :
-        print("No genes passed copy number threshold")
-        exit(0)
+        raise ValueError(
+            f"No genes had a mean copy-number above {filter_copy_number}. "
+            "Check the input file, or lower --filter-copy-number."
+        )
 
     prediction_df = pd.DataFrame(result_rows)
 
@@ -92,12 +96,12 @@ def cluster(
 ) :
     # Get only the ecDNA positive genes
     predict_df['Species'] = "None"
-    ecDNA_genes = predict_df[predict_df["Prediction"] == True]["Gene"].tolist()
+    ecDNA_genes = predict_df[predict_df["pred"] == True]["gene"].tolist()
     ecDNA_genes = list(dict.fromkeys(ecDNA_genes))
 
     # If no genes are ecDNA positive, just return
     if len(ecDNA_genes) == 0 :
-        return predict_df
+        return predict_df, pd.DataFrame(index=counts_df.index)
     
     counts_df_ecDNA = counts_df[ecDNA_genes]
 
@@ -105,7 +109,14 @@ def cluster(
     df_unique, column_groups = species_deconvolution.remove_duplicates(counts_df_ecDNA)
 
 
-    if deconvolution_method == "hier" :
+    # One distinct copy-number profile is one species. The methods below need at least two
+    # profiles to compare (np.corrcoef of a single column is a scalar), so assign it directly;
+    # this is the usage hier_deconvolution and _hier_nnls give for a single profile.
+    if df_unique.shape[1] == 1 :
+        species_to_gene = {"pred_ecDNA_1" : list(df_unique.columns)}
+        cell_by_ecDNA = (df_unique - 2).clip(lower=0)
+        cell_by_ecDNA.columns = ["pred_ecDNA_1"]
+    elif deconvolution_method == "hier" :
         species_to_gene, cell_by_ecDNA = species_deconvolution.hier_deconvolution(df_unique, hier_ddist)
     elif deconvolution_method == "auto" :
         species_to_gene, cell_by_ecDNA = species_deconvolution.combo_deconvolution(df_unique, out_log, cNMF_thresh, filename, error_w = error_w, 
@@ -114,14 +125,16 @@ def cluster(
         species_to_gene, cell_by_ecDNA = species_deconvolution.cNMF_deconvolution(df_unique, filename, out_log, error_w = error_w, score_cutoff= score_cutoff,
                                                                                   log_dir = log_dir, hier_ddist = hier_ddist, verbose = verbose)
     else :
-        print ("Cluster method must be one of hier, combo, or cNMF. We recommend using combo")
-        exit(0)
+        raise ValueError(
+            f"Unknown deconvolution method {deconvolution_method!r}; "
+            "expected one of hier, cNMF, auto."
+        )
 
     # Add labels back
     for species, genes in species_to_gene.items() :
         for gene in genes :
             for mapped_gene in column_groups[gene] :
-                mask = predict_df["Gene"] == mapped_gene
+                mask = predict_df["gene"] == mapped_gene
 
                 current = predict_df.loc[mask, "Species"].iloc[0]
 
@@ -162,7 +175,7 @@ def run_sample(file, output_dir, predictions, model_file, whitelist_file, decisi
             mode = "copynumber"
         else :
             out_log.append(f"{file} does not have extension h5ad, tsv, or csv. Skipping")
-            return
+            return out_log
 
     out_log.append(f"Running {file}")
     start = time.time()
