@@ -1,4 +1,6 @@
 # scAmp
+[![lint](https://github.com/JonesCompBioLab/scamp/actions/workflows/lint.yml/badge.svg)](https://github.com/JonesCompBioLab/scamp/actions/workflows/lint.yml)
+
 scAmp (single-cell Amplicon) is a python-based workflow for detecting and
 analyzing focal amplifications from single-cell data.
 
