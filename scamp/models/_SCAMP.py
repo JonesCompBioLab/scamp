@@ -72,10 +72,12 @@ class SCAMP(nn.Module):
                                 n_in,
                                 n_out,
                             ),
-                            activation_fn() if activation != None else None,
+                            activation_fn()
+                            if activation is not None and i < n_layers
+                            else None,
                             (
                                 nn.Dropout(p=dropout_rate)
-                                if (dropout_rate > 0) and (i != len(layers_dim))
+                                if (dropout_rate > 0) and (i < n_layers)
                                 else None
                             ),
                         ),
