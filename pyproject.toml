@@ -33,11 +33,18 @@ classifiers = [
 ]
 dependencies = [
     "anndata>=0.11",
+    "cellxgene",
+    "cnmf",
+    "kneed",
+    "matplotlib",
+    "numba",
     "numpy",
     "pandas",
+    "pyfaidx",
     "pyranges",
     "plotly",
     "rich>=12.0.0",
+    "scanpy",
     "scikit-learn>=0.21.2",
     "scipy",
     "sparse>=0.14.0",
@@ -46,7 +53,6 @@ dependencies = [
     "tqdm",
     "typer",
     "xarray>=2023.2.0",
-    "cellxgene"
 ]
 
 

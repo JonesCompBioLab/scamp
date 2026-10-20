@@ -2,44 +2,48 @@
 Utilities for ATAC-derived copy-number calling.
 """
 
-from pathlib import Path
-import pandas as pd
-import numpy as np
-import pyranges as pr
 import os
-import urllib.request
-from pyfaidx import Fasta
-from tqdm import tqdm
-from collections import defaultdict
 import pickle
-from scipy.sparse import csr_matrix
 import time
-import sys
+import urllib.request
+
+from collections import defaultdict
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pyranges as pr
+from pyfaidx import Fasta
+from scipy.sparse import csr_matrix
+from tqdm import tqdm
 
 
-def get_assembly_fasta(ASSEMBLY, cache_dir=f"../reference/.fa_genomes"):
+def get_assembly_fasta(assembly, cache_dir=None):
     """Read in the FASTA genome.
 
     Downloads and decompresses the FASTA file if it is not already
     present in the cache directory, then returns a pyfaidx Fasta object.
 
     Args:
+        assembly: Name of assembly (e.g., "hg38").
         cache_dir: Directory where the FASTA and index files are cached.
     """
     # assembly location
     GENOME_URL = (
-        f"https://hgdownload.soe.ucsc.edu/goldenPath/{ASSEMBLY}/bigZips/{ASSEMBLY}.fa.gz"
+        f"https://hgdownload.soe.ucsc.edu/goldenPath/{assembly}/bigZips/{assembly}.fa.gz"
     )
 
-    cache_dir = os.path.expanduser(cache_dir)
+    if cache_dir is None:
+        cache_dir = os.path.join(os.path.dirname(__file__), "reference/.fa_genomes")
+
     os.makedirs(cache_dir, exist_ok=True)
 
-    fa_gz = os.path.join(cache_dir, f"{ASSEMBLY}.fa.gz")
-    fa = os.path.join(cache_dir, f"{ASSEMBLY}.fa")
+    fa_gz = os.path.join(cache_dir, f"{assembly}.fa.gz")
+    fa = os.path.join(cache_dir, f"{assembly}.fa")
 
     # download fasta file as needed
     if not os.path.exists(fa):
-        print(f"Downloading {ASSEMBLY} genome (one-time)...")
+        print(f"Downloading {assembly} genome (one-time)...")
         urllib.request.urlretrieve(GENOME_URL, fa_gz)
 
         import gzip, shutil
@@ -87,7 +91,7 @@ def read_frag_files(data_dir, fragment_key):
 
 
 def make_windows(
-    genome, REFERENCE_BLACKLIST, window_size=3000000, sliding_size=1000000
+    genome, reference_blacklist, window_size=3000000, sliding_size=1000000
 ):
     """Create genome windows with base-fraction annotations.
 
@@ -96,7 +100,7 @@ def make_windows(
 
     Args:
         genome: pyfaidx Fasta genome object.
-        REFERENCE_BLACKLIST: BED file containing regions to subtract.
+        reference_blacklist: BED file containing regions to subtract.
         window_size: Width of each window in bases.
         sliding_size: Distance in bases between consecutive windows.
     """
@@ -105,7 +109,7 @@ def make_windows(
     chroms = [c for c in genome.keys() if c in standard_chroms]
 
     # Set up blacklist
-    blacklist = pr.read_bed(f"{REFERENCE_BLACKLIST}")
+    blacklist = pr.read_bed(f"{reference_blacklist}")
     # Remove small sections of blacklist
     blacklist = blacklist[(blacklist.End - blacklist.Start) > 1000]
 
@@ -386,7 +390,7 @@ def calculate_counts(windows, prefix_sums):
     return windows
 
 
-def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST):
+def get_windows(genome, window_size, step_size, reference_blacklist):
     """Read or create annotated genome windows.
 
     Creates a cached window file if it does not already exist, otherwise reads
@@ -395,30 +399,30 @@ def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST):
 
     Args:
         genome: pyfaidx Fasta genome object.
-        WINDOW_SIZE: Width of each window in bases.
-        STEP_SIZE: Distance in bases between consecutive windows.
-        REFERENCE_BLACKLIST: BED file containing regions to subtract.
+        window_size: Width of each window in bases.
+        step_size: Distance in bases between consecutive windows.
+        reference_blacklist: BED file containing regions to subtract.
     """
     # Create windows file if not yet created
     if not os.path.exists(
-        f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv"
+        f"{reference_blacklist}_{window_size}_{step_size}.tsv"
     ):
         print("Windows not found, creating")
         start = time.time()
 
         # Calculate prefix sums
         windows_m_blacklist = make_windows(
-            genome, REFERENCE_BLACKLIST, WINDOW_SIZE, STEP_SIZE
+            genome, reference_blacklist, window_size, step_size
         )
 
         # Export
         windows_m_blacklist.to_csv(
-            f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv",
+            f"{reference_blacklist}_{window_size}_{step_size}.tsv",
             sep="\t",
             index=False,
         )
         windows_m_blacklist = pd.read_csv(
-            f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv", sep="\t"
+            f"{reference_blacklist}_{window_size}_{step_size}.tsv", sep="\t"
         )
         end = time.time()
         print(f"Window creation time: {end - start:.2f} seconds", flush=True)
@@ -426,7 +430,7 @@ def get_windows(genome, WINDOW_SIZE, STEP_SIZE, REFERENCE_BLACKLIST):
     # If file already created, just read it in
     else:
         windows_m_blacklist = pd.read_csv(
-            f"{REFERENCE_BLACKLIST}_{WINDOW_SIZE}_{STEP_SIZE}.tsv", sep="\t"
+            f"{reference_blacklist}_{window_size}_{step_size}.tsv", sep="\t"
         )
 
     # Remove chromosomes
@@ -504,6 +508,15 @@ def create_cellxwindows(
                 "End",
                 "Barcode",
                 "Count",
+            ]
+        elif ncol == 6:
+            frag_chunk.columns = [
+                "Chromosome",
+                "Start",
+                "End",
+                "Barcode",
+                "Count",
+                "Strand",
             ]
         else:
             raise ValueError(
