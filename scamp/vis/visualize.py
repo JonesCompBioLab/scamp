@@ -62,7 +62,7 @@ def setup_anndata(
     # get only ecDNA rows
     for index, row in scamp.iterrows():
         gene = row["gene"]
-        if row["pred"]:
+        if row["prediction"]:
             new_row = {
                 "gene_set_name": "All ecDNA Genes",
                 "gene_set_description": "Predicted ecDNA by scAmp",

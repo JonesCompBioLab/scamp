@@ -9,6 +9,7 @@ from pathlib import Path
 
 from typing import Annotated, Literal, Union
 import warnings
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 import scanpy as sc
@@ -50,7 +51,9 @@ WhitelistFileArg = Annotated[
 ]
 
 
-@scamp_app.command(name="atac-cnv-legacy", help="Quantify single-cell copy-numbers.")
+@scamp_app.command(
+    name="atac-cnv-legacy", help="Quantify single-cell copy-numbers."
+)
 def quantify_copy_numbers_legacy(
     output_directory: OutputDirArg,
     copy_number_directory: CopyNumberRangesDirArg = None,
@@ -74,8 +77,10 @@ def quantify_copy_numbers_legacy(
         typer.Option(help="Reference genome name, to pair with a blacklist."),
     ] = "hg38",
 ):
-    print('Warning: This is a legacy command and may be deprecated in future '
-        'versions in favor of the python-based implementation `atac-cnv`.')
+    print(
+        "Warning: This is a legacy command and may be deprecated in future "
+        "versions in favor of the python-based implementation `atac-cnv`."
+    )
 
     binned_copy_number_script = (
         f"{os.path.dirname(__file__)}/scripts/scATAC_CNV.R"
@@ -86,10 +91,12 @@ def quantify_copy_numbers_legacy(
 
     # compute copy-numbers in genomic windows
     if fragment_directory:
-        
+
         if whitelist_file is None:
-            raise CLIError("If starting the copy-number pipeline from the " 
-                            "beginning, please provide a whitelist file")
+            raise CLIError(
+                "If starting the copy-number pipeline from the "
+                "beginning, please provide a whitelist file"
+            )
         print(
             f"Binning copy-numbers from {fragment_directory} in windows "
             f"of size {window_size}..."
@@ -111,6 +118,7 @@ def quantify_copy_numbers_legacy(
         f"Rscript {gene_aggregation_script} "
         f"{copy_number_directory} {output_directory} {reference_genome_name} {os.path.dirname(__file__)}"
     )
+
 
 @scamp_app.command(name="atac-cnv", help="Quantify single-cell copy-numbers.")
 def quantify_copy_numbers(
@@ -177,10 +185,8 @@ def quantify_copy_numbers(
     ] = True,
     reference_genome_name: Annotated[
         Literal["hg38", "hg19", "mm10", "mm39"],
-        typer.Option(
-            help="Reference genome name, to pair with a blacklist."
-        ),
-    ] = "hg38"
+        typer.Option(help="Reference genome name, to pair with a blacklist."),
+    ] = "hg38",
 ):
     if fragment_file is None and fragment_directory is None:
         print("Error: requires copy-numbers-file or copy-numbers-folder")
@@ -217,8 +223,9 @@ def quantify_copy_numbers(
         pickle_dir,
         recreate_pkl,
         fragment_file_key,
-        reference_genome_name
+        reference_genome_name,
     )
+
 
 @scamp_app.command(
     name="visualize", help="Visualize ecDNA results with cellxgene"
@@ -304,16 +311,18 @@ def visualize(
 def predict_ecdna(
     output_dir: OutputDirArg,
     copy_numbers: Annotated[
-        str, typer.Argument(help="MEX, csv, tsv, or anndata of copy numbers (cell by gene matrix)")
+        str,
+        typer.Argument(
+            help="MEX, csv, tsv, or anndata of copy numbers (cell by gene matrix)"
+        ),
     ],
-    model_file: ModelDirArg = str(Path(__file__).resolve().parent / "pretrained_models" / "scamp_model_1.0"),
-
-
+    model_file: ModelDirArg = str(
+        Path(__file__).resolve().parent
+        / "pretrained_models"
+        / "scamp_model_1.0"
+    ),
     whitelist_file: WhitelistFileArg = None,
-    log_dir: Annotated[
-        str, typer.Argument(help="cNMF log dir")
-    ] = "./temp",
-
+    log_dir: Annotated[str, typer.Argument(help="cNMF log dir")] = "./temp",
     verbose: Annotated[
         bool, typer.Option("--verbose", help="Enable verbose output")
     ] = False,
@@ -327,56 +336,103 @@ def predict_ecdna(
     #     float, typer.Option(help="Maximum percentile to cap copy-numbers.")
     # ] = 99.0,
     filter_copy_number: Annotated[
-         float, typer.Option(help="Drop genes whose mean copy-number is below this threshold.")
+        float,
+        typer.Option(
+            help="Drop genes whose mean copy-number is below this threshold."
+        ),
     ] = 2.5,
     predictions: Annotated[
-            str, typer.Option(help="Path to old predictions file if recalculating clusters/species without predicting again.")
+        str,
+        typer.Option(
+            help="Path to old predictions file if recalculating clusters/species without predicting again."
+        ),
     ] = None,
     predict_method: Annotated[
-            Literal["NN", "KNN", "GMM"],
-            typer.Option(help="Method to use for predicting ecDNA. NN (old version), KNN, or GMM")
+        Literal["NN", "KNN", "GMM"],
+        typer.Option(
+            help="Method to use for predicting ecDNA. NN (old version), KNN, or GMM"
+        ),
     ] = "GMM",
     deconvolution_method: Annotated[
-            Literal["hier", "cNMF", "auto"],
-            typer.Option(help="Method to use for clustering genes into species. hier (hierarchical clustering based), cNMF, or auto (automatically chooses method)")
+        Literal["hier", "cNMF", "auto"],
+        typer.Option(
+            help="Method to use for clustering genes into species. hier (hierarchical clustering based), cNMF, or auto (automatically chooses method)"
+        ),
     ] = "auto",
     one_thresh: Annotated[
-            float, typer.Option(help="Threshold for choosing one distribution in GMM/KMM + GMM.")
-    ] = 2.5,
+        float,
+        typer.Option(
+            help="Threshold for choosing one distribution in GMM/KMM + GMM."
+        ),
+    ] = 1.15,
     kneedle_coeff: Annotated[
-            float, typer.Option(help="Higher means kneedle tends to fewer GMM distributions.")
+        float,
+        typer.Option(
+            help="Higher means kneedle tends to fewer GMM distributions."
+        ),
     ] = 3,
     hier_ddist: Annotated[
-            float, typer.Option(help="Distance for null nodes in hierarchical clustering.")
+        float,
+        typer.Option(
+            help="Distance for null nodes in hierarchical clustering."
+        ),
     ] = 1.3,
     min_weight: Annotated[
-            float, typer.Option(help="Distributions with lower weight are ignored in GMM.")
+        float,
+        typer.Option(
+            help="Distributions with lower weight are ignored in GMM."
+        ),
     ] = 0.005,
     var_scale: Annotated[
-            float, typer.Option(help="Scaled GMM parameter. Greater value decreases false positives.")
+        float,
+        typer.Option(
+            help="Scaled GMM parameter. Greater value decreases false positives."
+        ),
     ] = 0.5,
-    k_mult: Annotated[
-            float, typer.Option(help="Multiplier for K in KNN for predictions. If not set, defaults to k = 100")
-    ] = None,
+    k: Annotated[
+        int, typer.Option(help="Number of nearest neighbors for KNN.")
+    ] = 100,
     cNMF_thresh: Annotated[
-            float, typer.Option(help="Threshold for choosing cNMF when using combo")
+        float, typer.Option(help="Threshold for choosing cNMF when using combo")
     ] = 0.55,
     error_w: Annotated[
-            float, typer.Option(help="Importance of error in deciding cNMF number of ecDNA species")
+        float,
+        typer.Option(
+            help="Importance of error in deciding cNMF number of ecDNA species"
+        ),
     ] = 0.25,
     score_cutoff: Annotated[
-            float, typer.Option(help="Cutoff for deciding a gene belongs to a species of ecDNA")
-    ] = 3
+        float,
+        typer.Option(
+            help="Cutoff for deciding a gene belongs to a species of ecDNA"
+        ),
+    ] = 3,
 ) -> None:
-    
 
     os.makedirs(output_dir, exist_ok=True)
 
-
-    out_log = predict.run_sample(copy_numbers, output_dir, predictions, model_file, whitelist_file, decision_rule, 
-               filter_copy_number, predict_method, one_thresh, kneedle_coeff, 
-               min_weight, var_scale, k_mult, deconvolution_method, hier_ddist, cNMF_thresh,
-               error_w, score_cutoff, log_dir, verbose) 
+    out_log = predict.run_sample(
+        copy_numbers,
+        output_dir,
+        predictions,
+        model_file,
+        whitelist_file,
+        decision_rule,
+        filter_copy_number,
+        predict_method,
+        one_thresh,
+        kneedle_coeff,
+        min_weight,
+        var_scale,
+        k,
+        deconvolution_method,
+        hier_ddist,
+        cNMF_thresh,
+        error_w,
+        score_cutoff,
+        log_dir,
+        verbose,
+    )
 
     # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
     # if not no_plot:
