@@ -47,9 +47,11 @@ def GMM_ecDNA_predict(
         verbose: Whether to log per-distribution details.
 
     Returns:
-        A tuple `(prediction, mean, var, weight)`: the predicted ecDNA status, and
-        the mean, unscaled variance and weight of the first ecDNA-positive
-        distribution. If no distribution is positive, returns `(False, -1, -1, -1)`.
+        A tuple `(prediction, probability, mean, var, weight)`: the predicted ecDNA
+        status, and the SCAMP probability, mean, unscaled variance and weight of the
+        first ecDNA-positive distribution. If no distribution is positive, returns
+        `(False, probability, -1, -1, -1)`, where `probability` is the highest
+        among the distributions checked (0 if none was).
     """
 
     input = np.array(input).reshape(-1, 1)
@@ -61,6 +63,8 @@ def GMM_ecDNA_predict(
     if verbose:
         out_log.append(f"Gene: {genes[0]}")
 
+    # Highest probability among the distributions, reported if none is positive
+    max_probability = 0.0
     for i in range(gmm.n_components):
         mean = gmm.means_[i, 0]
         var = gmm.covariances_[i, 0, 0]
@@ -76,12 +80,15 @@ def GMM_ecDNA_predict(
             samples = np.random.normal(
                 mean, np.sqrt(var_scaled), size=1000
             ).tolist()
-            if NN_ecDNA_predict(
+            prediction, probability = NN_ecDNA_predict(
                 model, samples, out_log, genes, decision_rule, verbose
-            )[0]:
-                return True, mean, var, weight
+            )
+            probability = float(probability)
+            if prediction:
+                return True, probability, mean, var, weight
+            max_probability = max(max_probability, probability)
 
-    return False, -1, -1, -1
+    return False, max_probability, -1, -1, -1
 
 
 def _GMM_fit(

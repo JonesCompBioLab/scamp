@@ -60,10 +60,11 @@ def predict(
         verbose: Whether to log per-gene details.
 
     Returns:
-        A DataFrame with one row per gene that passed the filter. It has a `gene`
-        column, a boolean `prediction` column, and columns that depend on the method:
-        `Probability` (NN); `DistributionVariance`, `DistributionMean` and `Weight` (GMM);
-        `NumberOfPositiveCells` (KNN).
+        A DataFrame with one row per gene that passed the filter. It has `gene`,
+        `mean` and `var` (the gene's copy-number mean and variance across cells),
+        a boolean `prediction` column, and columns that depend on the method:
+        `Probability` (NN); `Probability` and `Weight` (GMM); `NumberOfPositiveCells`
+        (KNN).
 
     Raises:
         ValueError: If `predict_method` is not recognized, or no gene passes
@@ -104,7 +105,7 @@ def predict(
                         "prediction": prediction,
                     }
                 elif predict_method == "GMM":
-                    prediction, mean, var, weight = predict_methods.GMM_ecDNA_predict(
+                    prediction, proba, _, _, weight = predict_methods.GMM_ecDNA_predict(
                         model,
                         counts_df[gene],
                         out_log,
@@ -119,16 +120,14 @@ def predict(
                     result_rows.append(
                         {
                             "gene": gene,
-                            "DistributionVariance": var,
-                            "DistributionMean": mean,
+                            "Probability": proba,
                             "Weight": weight,
                             "prediction": prediction,
                         }
                     )
                     used_vectors[rounded] = {
                         "gene": gene,
-                        "DistributionVariance": var,
-                        "DistributionMean": mean,
+                        "Probability": proba,
                         "Weight": weight,
                         "prediction": prediction,
                     }
@@ -172,6 +171,11 @@ def predict(
         )
 
     prediction_df = pd.DataFrame(result_rows)
+
+    # Copy-number mean and variance of each gene across cells
+    gene_counts = counts_df[prediction_df["gene"]]
+    prediction_df.insert(1, "mean", gene_counts.mean().to_numpy())
+    prediction_df.insert(2, "var", gene_counts.var(ddof=0).to_numpy())
 
     return prediction_df
 
