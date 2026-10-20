@@ -362,7 +362,7 @@ def predict_ecdna(
     one_thresh: Annotated[
         float,
         typer.Option(
-            help="Threshold for choosing one distribution in GMM/KMM + GMM."
+            help="Threshold for choosing one distribution in GMM/KNN + GMM."
         ),
     ] = 1.15,
     kneedle_coeff: Annotated[

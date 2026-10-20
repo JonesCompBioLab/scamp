@@ -103,8 +103,14 @@ def _GMM_fit(
             aic_scores.append(gmm.aic(input))
             ks.append(k)
 
-        if bic_scores[0] / np.min(bic_scores) < one_thresh:
-            n_components = 1
+        # if bic_scores[0] / np.min(bic_scores) < one_thresh:
+        #     n_components = 1
+        
+        # Relative gap between the 1-distribution BIC and the best BIC. Same as
+        # bic_scores[0] / min - 1 when BIC is positive, but keeps its sign when BIC is negative.
+        best_bic = np.min(bic_scores)
+        if (bic_scores[0] - best_bic) / abs(best_bic) < one_thresh - 1:
+             n_components = 1
 
         else:
 
@@ -119,6 +125,10 @@ def _GMM_fit(
             )
 
             n_components = kneedle.knee
+
+            # kneedle returns None when the BIC curve has no knee
+            if n_components is None:
+                n_components = 1
 
     # Fit GMM
     gmm = GaussianMixture(n_components=n_components, random_state=0)

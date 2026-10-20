@@ -27,11 +27,11 @@ def predict(
     decision_rule,
     filter_copy_number,
     predict_method,
-    one_thresh=None,
-    kneedle_coeff=None,
-    min_weight=None,
-    var_scale=None,
-    k=None,
+    one_thresh=1.15,
+    kneedle_coeff=3,
+    min_weight=0.005,
+    var_scale=0.5,
+    k=100,
     verbose=False,
 ):
     """Predicts ecDNA status for each gene from its copy-number distribution across cells.
@@ -408,7 +408,7 @@ def run_sample(
 
     # Output early in case something breaks
     filename = Path(file).stem
-    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t")
+    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)
 
     prediction_df, cell_by_eCDNA = cluster(
         filename,
