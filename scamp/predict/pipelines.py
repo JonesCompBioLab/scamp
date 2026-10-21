@@ -35,6 +35,9 @@ def predict(
     verbose=False,
     gmm_max_percentile=100.0,
     gmm_min_copy_number=None,
+    nn_min_copy_number=2.0,
+    nn_max_percentile=99.0,
+    nn_filter_copy_number=2.5,
 ):
     """Predicts ecDNA status for each gene from its copy-number distribution across cells.
 
@@ -64,6 +67,8 @@ def predict(
             GMM fit (GMM and KNN; 100 = keep all).
         gmm_min_copy_number: Per gene, keep only cells with copy-number strictly
             above this before the GMM fit (GMM and KNN; None = no minimum).
+        nn_min_copy_number, nn_max_percentile, nn_filter_copy_number: The model's
+            preprocessing of what it scores (defaults 2.0 / 99.0 / 2.5).
 
     Returns:
         A DataFrame with one row per gene that passed the filter. It has `gene`,
@@ -100,7 +105,15 @@ def predict(
             else:
                 if predict_method == "NN":
                     prediction, proba = predict_methods.NN_ecDNA_predict(
-                        model, counts_df[gene], out_log, np.array([gene]), decision_rule, verbose
+                        model,
+                        counts_df[gene],
+                        out_log,
+                        np.array([gene]),
+                        decision_rule,
+                        verbose,
+                        min_copy_number=nn_min_copy_number,
+                        max_percentile=nn_max_percentile,
+                        filter_copy_number=nn_filter_copy_number,
                     )
                     result_rows.append(
                         {"gene": gene, "Probability": proba, "prediction": prediction}
@@ -124,6 +137,9 @@ def predict(
                         verbose=verbose,
                         gmm_max_percentile=gmm_max_percentile,
                         gmm_min_copy_number=gmm_min_copy_number,
+                        nn_min_copy_number=nn_min_copy_number,
+                        nn_max_percentile=nn_max_percentile,
+                        nn_filter_copy_number=nn_filter_copy_number,
                     )
                     result_rows.append(
                         {
@@ -154,6 +170,9 @@ def predict(
                         verbose=verbose,
                         gmm_max_percentile=gmm_max_percentile,
                         gmm_min_copy_number=gmm_min_copy_number,
+                        nn_min_copy_number=nn_min_copy_number,
+                        nn_max_percentile=nn_max_percentile,
+                        nn_filter_copy_number=nn_filter_copy_number,
                     )
                     result_rows.append(
                         {
@@ -325,6 +344,9 @@ def run_sample(
     verbose,
     gmm_max_percentile=100.0,
     gmm_min_copy_number=None,
+    nn_min_copy_number=2.0,
+    nn_max_percentile=99.0,
+    nn_filter_copy_number=2.5,
 ):
     """Runs prediction and species deconvolution on one copy-number file.
 
@@ -365,6 +387,8 @@ def run_sample(
             GMM fit (GMM and KNN; 100 = keep all).
         gmm_min_copy_number: Per gene, keep only cells with copy-number strictly
             above this before the GMM fit (GMM and KNN; None = no minimum).
+        nn_min_copy_number, nn_max_percentile, nn_filter_copy_number: The model's
+            preprocessing of what it scores (defaults 2.0 / 99.0 / 2.5).
 
     Returns:
         The list of log lines for this run.
@@ -376,6 +400,9 @@ def run_sample(
     out_log.append(f"One thresh: {one_thresh}")
     out_log.append(f"GMM max percentile (keep <=): {gmm_max_percentile}")
     out_log.append(f"GMM min copy number (keep >): {gmm_min_copy_number}")
+    out_log.append(f"NN min copy number (keep >): {nn_min_copy_number}")
+    out_log.append(f"NN max percentile (keep <=): {nn_max_percentile}")
+    out_log.append(f"NN filter copy number (score if mean >=): {nn_filter_copy_number}")
 
     # Detect extension
     out_log.append(f"Running {file}")
@@ -427,6 +454,9 @@ def run_sample(
             verbose,
             gmm_max_percentile=gmm_max_percentile,
             gmm_min_copy_number=gmm_min_copy_number,
+            nn_min_copy_number=nn_min_copy_number,
+            nn_max_percentile=nn_max_percentile,
+            nn_filter_copy_number=nn_filter_copy_number,
         )
     else:
         prediction_df = pd.read_csv(predictions, sep="\t")

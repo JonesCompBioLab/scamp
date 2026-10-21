@@ -46,6 +46,9 @@ def GMM_ecDNA_predict(
     verbose=False,
     gmm_max_percentile=100.0,
     gmm_min_copy_number=None,
+    nn_min_copy_number=2.0,
+    nn_max_percentile=99.0,
+    nn_filter_copy_number=2.5,
 ):
     """Predicts ecDNA status for one gene by fitting a GMM to its copy-numbers.
 
@@ -76,6 +79,8 @@ def GMM_ecDNA_predict(
             of the gene's copy-numbers (100 = keep all).
         gmm_min_copy_number: Before the GMM fit, keep only cells with copy-number
             strictly above this (None = no minimum).
+        nn_min_copy_number, nn_max_percentile, nn_filter_copy_number: Passed to
+            `NN_ecDNA_predict` (the model's preprocessing of what it scores).
 
     Returns:
         A tuple `(prediction, probability, mean, var, weight)`: the predicted ecDNA
@@ -126,7 +131,15 @@ def GMM_ecDNA_predict(
                 mean, np.sqrt(var_scaled), size=1000
             ).tolist()
             prediction, probability = NN_ecDNA_predict(
-                model, samples, out_log, genes, decision_rule, verbose
+                model,
+                samples,
+                out_log,
+                genes,
+                decision_rule,
+                verbose,
+                min_copy_number=nn_min_copy_number,
+                max_percentile=nn_max_percentile,
+                filter_copy_number=nn_filter_copy_number,
             )
             probability = float(probability)
             if prediction:
@@ -196,6 +209,9 @@ def NN_ecDNA_predict(
     genes=np.array(["GENE"]),
     decision_rule=0.5,
     verbose=False,
+    min_copy_number=2.0,
+    max_percentile=99.0,
+    filter_copy_number=2.5,
 ):
     """Predicts ecDNA status for one copy-number distribution with the SCAMP model.
 
@@ -207,6 +223,12 @@ def NN_ecDNA_predict(
         decision_rule: SCAMP likelihood threshold for calling the distribution
             ecDNA-positive.
         verbose: Whether to log when the distribution fails the copy-number filter.
+        min_copy_number: The model's summary statistics ignore copy-numbers at or
+            below this (-inf = keep all).
+        max_percentile: Copy-numbers above this percentile are dropped before the
+            summary statistics (100 = keep all).
+        filter_copy_number: The distribution is not scored (False, 0) if its mean
+            copy-number is below this (-inf = always score).
 
     Returns:
         A tuple `(prediction, probability)`: the predicted ecDNA status, and the
@@ -218,9 +240,9 @@ def NN_ecDNA_predict(
     X, genes_pass_filter = model.prepare_copy_numbers(
         input,
         genes,
-        min_copy_number=2.0,
-        max_percentile=99.0,
-        filter_copy_number=2.5,
+        min_copy_number=min_copy_number,
+        max_percentile=max_percentile,
+        filter_copy_number=filter_copy_number,
     )
 
     if len(genes_pass_filter) == 0:
@@ -252,6 +274,9 @@ def KNN_ecDNA_predict(
     verbose=False,
     gmm_max_percentile=100.0,
     gmm_min_copy_number=None,
+    nn_min_copy_number=2.0,
+    nn_max_percentile=99.0,
+    nn_filter_copy_number=2.5,
 ):
     """Predicts ecDNA status for one gene from the neighborhoods of individual cells.
 
@@ -285,6 +310,8 @@ def KNN_ecDNA_predict(
             fit, the subsample and the neighborhoods.
         gmm_min_copy_number: Keep only cells with copy-number strictly above this
             (None = no minimum). Used like `gmm_max_percentile`.
+        nn_min_copy_number, nn_max_percentile, nn_filter_copy_number: Passed to
+            `NN_ecDNA_predict` (the model's preprocessing of what it scores).
 
     Returns:
         A tuple `(prediction, num_positive_cells)`: the predicted ecDNA status, and
@@ -387,7 +414,15 @@ def KNN_ecDNA_predict(
 
         if np.mean(subset) > 2.5 and np.var(subset) > 10:
             res = NN_ecDNA_predict(
-                model, subset.tolist(), out_log, genes, decision_rule, verbose
+                model,
+                subset.tolist(),
+                out_log,
+                genes,
+                decision_rule,
+                verbose,
+                min_copy_number=nn_min_copy_number,
+                max_percentile=nn_max_percentile,
+                filter_copy_number=nn_filter_copy_number,
             )[0]
             if verbose:
                 out_log.append(f"{genes[0]} ecDNA:")

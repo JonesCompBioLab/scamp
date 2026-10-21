@@ -419,6 +419,24 @@ def predict_ecdna(
             help="Before the GMM (GMM and KNN): per gene, keep only cells with copy-number strictly above this. Default: no minimum."
         ),
     ] = None,
+    nn_min_copy_number: Annotated[
+        float,
+        typer.Option(
+            help="Model scoring step: ignore copy-numbers at or below this in its summary statistics. -inf = keep all."
+        ),
+    ] = 2.0,
+    nn_max_percentile: Annotated[
+        float,
+        typer.Option(
+            help="Model scoring step: drop copy-numbers above this percentile. 100 = keep all."
+        ),
+    ] = 99.0,
+    nn_filter_copy_number: Annotated[
+        float,
+        typer.Option(
+            help="Model scoring step: do not score a distribution whose mean is below this. -inf = always score."
+        ),
+    ] = 2.5,
 ) -> None:
 
     os.makedirs(output_dir, exist_ok=True)
@@ -446,6 +464,9 @@ def predict_ecdna(
         verbose,
         gmm_max_percentile=gmm_max_percentile,
         gmm_min_copy_number=gmm_min_copy_number,
+        nn_min_copy_number=nn_min_copy_number,
+        nn_max_percentile=nn_max_percentile,
+        nn_filter_copy_number=nn_filter_copy_number,
     )
 
     # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
