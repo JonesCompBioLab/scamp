@@ -5,6 +5,18 @@ from .NN_model import SCAMP
 import torch
 import math
 from scipy.stats import norm
+import hashlib
+
+
+def _vector_seed(input):
+    """Random seed derived from a copy-number vector, so reruns are identical.
+
+    The seed is the first 8 bytes of a sha256 of the values rounded to 3 decimals
+    (the rounding `predict` uses to spot duplicate vectors; + 0.0 turns -0.0 into 0.0).
+    """
+    rounded = np.round(np.asarray(input, dtype=np.float64).ravel(), 3) + 0.0
+    digest = hashlib.sha256(rounded.tobytes()).digest()
+    return int.from_bytes(digest[:8], "little")
 
 
 def GMM_ecDNA_predict(
@@ -210,7 +222,8 @@ def KNN_ecDNA_predict(
 
     Cells are assigned to distributions of a GMM fit, and each cell's neighbors in
     the same distribution are classified with `NN_ecDNA_predict`. Inputs with more
-    than 4000 cells are randomly subsampled to 4000.
+    than 4000 cells are randomly subsampled to 4000, with a seed derived from the
+    copy-numbers.
 
     Args:
         model: SCAMP model loaded from a .pt file.
@@ -238,8 +251,10 @@ def KNN_ecDNA_predict(
         the number of cells whose neighborhood was called ecDNA-positive.
     """
 
+    # Seeded from the gene's copy-numbers, so the subsample is the same on every run
+    seed = _vector_seed(input)
     if len(input) > 4000:
-        arr = np.random.choice(input, size=4000, replace=False)
+        arr = np.random.default_rng(seed).choice(input, size=4000, replace=False)
     else:
         arr = np.asarray(input)
 
