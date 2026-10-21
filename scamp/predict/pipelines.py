@@ -33,6 +33,8 @@ def predict(
     var_scale=0.5,
     k=100,
     verbose=False,
+    gmm_max_percentile=100.0,
+    gmm_min_copy_number=None,
 ):
     """Predicts ecDNA status for each gene from its copy-number distribution across cells.
 
@@ -58,6 +60,10 @@ def predict(
             Larger values reduce false positives (GMM and KNN).
         k: Number of nearest neighbors for KNN.
         verbose: Whether to log per-gene details.
+        gmm_max_percentile: Per gene, drop cells above this percentile before the
+            GMM fit (GMM and KNN; 100 = keep all).
+        gmm_min_copy_number: Per gene, keep only cells with copy-number strictly
+            above this before the GMM fit (GMM and KNN; None = no minimum).
 
     Returns:
         A DataFrame with one row per gene that passed the filter. It has `gene`,
@@ -116,6 +122,8 @@ def predict(
                         var_scale=var_scale,
                         min_weight=min_weight,
                         verbose=verbose,
+                        gmm_max_percentile=gmm_max_percentile,
+                        gmm_min_copy_number=gmm_min_copy_number,
                     )
                     result_rows.append(
                         {
@@ -144,6 +152,8 @@ def predict(
                         var_scale=var_scale,
                         decision_rule=decision_rule,
                         verbose=verbose,
+                        gmm_max_percentile=gmm_max_percentile,
+                        gmm_min_copy_number=gmm_min_copy_number,
                     )
                     result_rows.append(
                         {
@@ -313,6 +323,8 @@ def run_sample(
     score_cutoff,
     log_dir,
     verbose,
+    gmm_max_percentile=100.0,
+    gmm_min_copy_number=None,
 ):
     """Runs prediction and species deconvolution on one copy-number file.
 
@@ -349,6 +361,10 @@ def run_sample(
         score_cutoff: Score above which a gene is assigned to a species.
         log_dir: Directory for cNMF intermediate files.
         verbose: Whether to log extra details.
+        gmm_max_percentile: Per gene, drop cells above this percentile before the
+            GMM fit (GMM and KNN; 100 = keep all).
+        gmm_min_copy_number: Per gene, keep only cells with copy-number strictly
+            above this before the GMM fit (GMM and KNN; None = no minimum).
 
     Returns:
         The list of log lines for this run.
@@ -357,6 +373,9 @@ def run_sample(
         f"Settings\nModel path: {model_file}\nDecision rule: {decision_rule}\nPrediction method: {predict_method}\nDeconvolution method: {deconvolution_method}"
     ]
     out_log.append(f"Copy number filter: {filter_copy_number}")
+    out_log.append(f"One thresh: {one_thresh}")
+    out_log.append(f"GMM max percentile (keep <=): {gmm_max_percentile}")
+    out_log.append(f"GMM min copy number (keep >): {gmm_min_copy_number}")
 
     # Detect extension
     out_log.append(f"Running {file}")
@@ -406,6 +425,8 @@ def run_sample(
             var_scale,
             k,
             verbose,
+            gmm_max_percentile=gmm_max_percentile,
+            gmm_min_copy_number=gmm_min_copy_number,
         )
     else:
         prediction_df = pd.read_csv(predictions, sep="\t")

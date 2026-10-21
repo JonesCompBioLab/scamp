@@ -407,6 +407,18 @@ def predict_ecdna(
             help="Cutoff for deciding a gene belongs to a species of ecDNA"
         ),
     ] = 3,
+    gmm_max_percentile: Annotated[
+        float,
+        typer.Option(
+            help="Before the GMM (GMM and KNN): per gene, drop cells above this percentile. 100 = keep all."
+        ),
+    ] = 100.0,
+    gmm_min_copy_number: Annotated[
+        float,
+        typer.Option(
+            help="Before the GMM (GMM and KNN): per gene, keep only cells with copy-number strictly above this. Default: no minimum."
+        ),
+    ] = None,
 ) -> None:
 
     os.makedirs(output_dir, exist_ok=True)
@@ -432,6 +444,8 @@ def predict_ecdna(
         score_cutoff,
         log_dir,
         verbose,
+        gmm_max_percentile=gmm_max_percentile,
+        gmm_min_copy_number=gmm_min_copy_number,
     )
 
     # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')

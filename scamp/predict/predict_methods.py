@@ -19,6 +19,18 @@ def _vector_seed(input):
     return int.from_bytes(digest[:8], "little")
 
 
+def _trim_cells(input, max_percentile=100.0, min_copy_number=None):
+    """Keeps the cells at or below `max_percentile` of the copy-numbers and strictly
+    above `min_copy_number` (None = no minimum). Both are applied to all of the
+    gene's cells. Returns a 1-D array.
+    """
+    x = np.asarray(input, dtype=np.float64).ravel()
+    keep = x <= np.percentile(x, max_percentile)
+    if min_copy_number is not None:
+        keep &= x > min_copy_number
+    return x[keep]
+
+
 def GMM_ecDNA_predict(
     model,
     input,
@@ -32,6 +44,8 @@ def GMM_ecDNA_predict(
     var_scale=0.5,
     min_weight=0.005,
     verbose=False,
+    gmm_max_percentile=100.0,
+    gmm_min_copy_number=None,
 ):
     """Predicts ecDNA status for one gene by fitting a GMM to its copy-numbers.
 
@@ -58,6 +72,10 @@ def GMM_ecDNA_predict(
             before sampling, to counteract small sample sizes.
         min_weight: Distributions with less weight than this (out of 1) are ignored.
         verbose: Whether to log per-distribution details.
+        gmm_max_percentile: Before the GMM fit, drop cells above this percentile
+            of the gene's copy-numbers (100 = keep all).
+        gmm_min_copy_number: Before the GMM fit, keep only cells with copy-number
+            strictly above this (None = no minimum).
 
     Returns:
         A tuple `(prediction, probability, mean, var, weight)`: the predicted ecDNA
@@ -70,6 +88,18 @@ def GMM_ecDNA_predict(
     input = np.array(input).reshape(-1, 1)
     # Seeded from the gene's copy-numbers, so the sampled cells are the same on every run
     seed = _vector_seed(input)
+
+    # Optional trimming of the real cells before the GMM fit
+    if gmm_max_percentile < 100 or gmm_min_copy_number is not None:
+        input = _trim_cells(
+            input, gmm_max_percentile, gmm_min_copy_number
+        ).reshape(-1, 1)
+        # Too few cells left to fit up to max_components - 1 distributions
+        if len(input) < max_components:
+            out_log.append(
+                f"{genes[0]}: only {len(input)} cells left after GMM trimming, not called"
+            )
+            return False, 0.0, -1, -1, -1
 
     gmm = _GMM_fit(
         input, n_components, one_thresh, max_components, kneedle_coeff
@@ -220,6 +250,8 @@ def KNN_ecDNA_predict(
     var_scale=0.5,
     decision_rule=0.5,
     verbose=False,
+    gmm_max_percentile=100.0,
+    gmm_min_copy_number=None,
 ):
     """Predicts ecDNA status for one gene from the neighborhoods of individual cells.
 
@@ -248,6 +280,11 @@ def KNN_ecDNA_predict(
         decision_rule: SCAMP likelihood threshold for calling a neighborhood
             ecDNA-positive.
         verbose: Whether to log per-cell details.
+        gmm_max_percentile: Drop cells above this percentile of the gene's
+            copy-numbers (100 = keep all). The trimmed cells are used for the GMM
+            fit, the subsample and the neighborhoods.
+        gmm_min_copy_number: Keep only cells with copy-number strictly above this
+            (None = no minimum). Used like `gmm_max_percentile`.
 
     Returns:
         A tuple `(prediction, num_positive_cells)`: the predicted ecDNA status, and
@@ -256,6 +293,17 @@ def KNN_ecDNA_predict(
 
     # Seeded from the gene's copy-numbers, so the subsample is the same on every run
     seed = _vector_seed(input)
+
+    # Optional trimming of the real cells, before the subsample and the GMM fit
+    if gmm_max_percentile < 100 or gmm_min_copy_number is not None:
+        input = _trim_cells(input, gmm_max_percentile, gmm_min_copy_number)
+        # Too few cells left to fit up to max_components - 1 distributions
+        if len(input) < max_components:
+            out_log.append(
+                f"{genes[0]}: only {len(input)} cells left after GMM trimming, not called"
+            )
+            return False, 0
+
     if len(input) > 4000:
         arr = np.random.default_rng(seed).choice(input, size=4000, replace=False)
     else:
