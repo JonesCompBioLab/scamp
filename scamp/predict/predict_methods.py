@@ -243,6 +243,10 @@ def KNN_ecDNA_predict(
     else:
         arr = np.asarray(input)
 
+    # Sort the cells by copy-number so neighbours in the sliding window are the nearest
+    # copy-numbers. The sort was lost in 6ae0f12; Kevin's paper code does arr = sorted(arr).
+    arr = np.sort(arr)
+
     if verbose:
         out_log.append(f"k = {k}")
 
