@@ -35,7 +35,8 @@ def GMM_ecDNA_predict(
 ):
     """Predicts ecDNA status for one gene by fitting a GMM to its copy-numbers.
 
-    Each fitted distribution with enough weight is sampled, and the samples are
+    Each fitted distribution with enough weight is sampled (with a seed derived
+    from the copy-numbers and the distribution's index), and the samples are
     classified with `NN_ecDNA_predict`. The gene is ecDNA-positive if any
     distribution is, and the first positive distribution is returned.
 
@@ -67,6 +68,8 @@ def GMM_ecDNA_predict(
     """
 
     input = np.array(input).reshape(-1, 1)
+    # Seeded from the gene's copy-numbers, so the sampled cells are the same on every run
+    seed = _vector_seed(input)
 
     gmm = _GMM_fit(
         input, n_components, one_thresh, max_components, kneedle_coeff
@@ -89,7 +92,7 @@ def GMM_ecDNA_predict(
             )
 
         if weight > min_weight:
-            samples = np.random.normal(
+            samples = np.random.default_rng([seed, i]).normal(
                 mean, np.sqrt(var_scaled), size=1000
             ).tolist()
             prediction, probability = NN_ecDNA_predict(
