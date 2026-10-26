@@ -452,6 +452,8 @@ def predict_ecdna(
     scamp_min_copy_number: Annotated[float, typer.Option(help="scAmp scoring: ignore copy-numbers <= this.")] = 2.0,
     scamp_max_percentile: Annotated[float, typer.Option(help="scAmp scoring: drop copy-numbers above this percentile.")] = 99.9,
     scamp_filter_copy_number: Annotated[float, typer.Option(help="scAmp scoring: skip if the mean is below this.")] = 2.5,
+    knn_min_mean: Annotated[float, typer.Option(help="KNN gate: score a neighbourhood only if its mean exceeds this. -inf = off.")] = 2.5,
+    knn_min_var: Annotated[float, typer.Option(help="KNN gate: score a neighbourhood only if its variance exceeds this. -inf = off.")] = 10,
 ) -> None:
 
     os.makedirs(output_dir, exist_ok=True)
@@ -488,6 +490,8 @@ def predict_ecdna(
         scamp_min_copy_number=scamp_min_copy_number,
         scamp_max_percentile=scamp_max_percentile,
         scamp_filter_copy_number=scamp_filter_copy_number,
+        knn_min_mean=knn_min_mean,
+        knn_min_var=knn_min_var,
     )
 
     # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')

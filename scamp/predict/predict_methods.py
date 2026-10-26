@@ -311,6 +311,14 @@ def KNN_ecDNA_predict(
     nn_min_copy_number=2.0,
     nn_max_percentile=99.0,
     nn_filter_copy_number=2.5,
+    min_weight=0.005,
+    knn_min_mean=2.5,
+    knn_min_var=10,
+    score="ratio",
+    single_dist_scamp=False,
+    scamp_min_copy_number=2.0,
+    scamp_max_percentile=99.9,
+    scamp_filter_copy_number=2.5,
 ):
     """Predicts ecDNA status for one gene from the neighborhoods of individual cells.
 
@@ -354,6 +362,7 @@ def KNN_ecDNA_predict(
 
     # Seeded from the gene's copy-numbers, so the subsample is the same on every run
     seed = _vector_seed(input)
+    all_cells = np.asarray(input, dtype=float).copy()   # untrimmed, for single_dist_scamp
 
     # Optional trimming of the real cells, before the subsample and the GMM fit
     if gmm_max_percentile < 100 or gmm_min_copy_number is not None:
@@ -385,6 +394,15 @@ def KNN_ecDNA_predict(
         kneedle_coeff,
     )
     x = np.array(arr).reshape(-1)
+
+    # Only one distribution passes min_weight: score the gene as published scAmp does (P8, as in GMM
+    # mode): all of its untrimmed cells, scAmp's preprocessing, softmax >= decision_rule.
+    # NumberOfPositiveCells is then reported as -1 (no neighbourhoods scored).
+    if single_dist_scamp and int((gmm.weights_ > min_weight).sum()) == 1:
+        probability = _nn_probability(
+            model, all_cells, genes, "softmax", scamp_min_copy_number,
+            scamp_max_percentile, scamp_filter_copy_number)
+        return probability >= decision_rule, -1
 
     means = gmm.means_.flatten()
     variances = gmm.covariances_.flatten()
@@ -446,18 +464,24 @@ def KNN_ecDNA_predict(
         mean_diff = np.mean(subset) - label_means[target_label]
         subset = subset - mean_diff
 
-        if np.mean(subset) > 2.5 and np.var(subset) > 10:
-            res = NN_ecDNA_predict(
-                model,
-                subset.tolist(),
-                out_log,
-                genes,
-                decision_rule,
-                verbose,
-                min_copy_number=nn_min_copy_number,
-                max_percentile=nn_max_percentile,
-                filter_copy_number=nn_filter_copy_number,
-            )[0]
+        # Gate: Kevin set mean > 2.5 and var > 10 to save runtime (P8: configurable; -inf = off)
+        if np.mean(subset) > knn_min_mean and np.var(subset) > knn_min_var:
+            if score == "ratio":
+                res = NN_ecDNA_predict(
+                    model,
+                    subset.tolist(),
+                    out_log,
+                    genes,
+                    decision_rule,
+                    verbose,
+                    min_copy_number=nn_min_copy_number,
+                    max_percentile=nn_max_percentile,
+                    filter_copy_number=nn_filter_copy_number,
+                )[0]
+            else:   # softmax >= decision_rule, as published scAmp
+                res = _nn_probability(
+                    model, subset.tolist(), genes, "softmax", nn_min_copy_number,
+                    nn_max_percentile, nn_filter_copy_number, out_log, verbose) >= decision_rule
             if verbose:
                 out_log.append(f"{genes[0]} ecDNA:")
             out.append(res)
