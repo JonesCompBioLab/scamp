@@ -437,6 +437,21 @@ def predict_ecdna(
             help="Model scoring step: do not score a distribution whose mean is below this. -inf = always score."
         ),
     ] = 2.5,
+    score: Annotated[
+        Literal["ratio", "softmax"],
+        typer.Option(help="GMM: model probability. ratio (scaup) or softmax (published scAmp; use with --decision-rule 0.6)."),
+    ] = "ratio",
+    n_draws: Annotated[
+        int,
+        typer.Option(help="GMM: draws of 1,000 sampled cells per distribution; the call uses the mean probability."),
+    ] = 1,
+    single_dist_scamp: Annotated[
+        bool,
+        typer.Option("--single-dist-scamp", help="GMM: if only one distribution has weight > --min-weight, score the gene's untrimmed cells as published scAmp (--scamp-* preprocessing, softmax >= --decision-rule)."),
+    ] = False,
+    scamp_min_copy_number: Annotated[float, typer.Option(help="scAmp scoring: ignore copy-numbers <= this.")] = 2.0,
+    scamp_max_percentile: Annotated[float, typer.Option(help="scAmp scoring: drop copy-numbers above this percentile.")] = 99.9,
+    scamp_filter_copy_number: Annotated[float, typer.Option(help="scAmp scoring: skip if the mean is below this.")] = 2.5,
 ) -> None:
 
     os.makedirs(output_dir, exist_ok=True)
@@ -467,6 +482,12 @@ def predict_ecdna(
         nn_min_copy_number=nn_min_copy_number,
         nn_max_percentile=nn_max_percentile,
         nn_filter_copy_number=nn_filter_copy_number,
+        score=score,
+        n_draws=n_draws,
+        single_dist_scamp=single_dist_scamp,
+        scamp_min_copy_number=scamp_min_copy_number,
+        scamp_max_percentile=scamp_max_percentile,
+        scamp_filter_copy_number=scamp_filter_copy_number,
     )
 
     # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')

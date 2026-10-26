@@ -38,6 +38,12 @@ def predict(
     nn_min_copy_number=2.0,
     nn_max_percentile=99.0,
     nn_filter_copy_number=2.5,
+    score="ratio",
+    n_draws=1,
+    single_dist_scamp=False,
+    scamp_min_copy_number=2.0,
+    scamp_max_percentile=99.9,
+    scamp_filter_copy_number=2.5,
 ):
     """Predicts ecDNA status for each gene from its copy-number distribution across cells.
 
@@ -69,6 +75,10 @@ def predict(
             above this before the GMM fit (GMM and KNN; None = no minimum).
         nn_min_copy_number, nn_max_percentile, nn_filter_copy_number: The model's
             preprocessing of what it scores (defaults 2.0 / 99.0 / 2.5).
+        score, n_draws, single_dist_scamp, scamp_*: GMM scoring (P7). score "ratio" (scaup) or
+            "softmax" (scAmp); n_draws = draws of 1,000 sampled cells per distribution, called on the mean
+            probability; single_dist_scamp = if only one distribution has weight > min_weight, score the
+            gene's untrimmed cells as scAmp does (scamp_* preprocessing, softmax >= decision_rule).
 
     Returns:
         A DataFrame with one row per gene that passed the filter. It has `gene`,
@@ -140,6 +150,12 @@ def predict(
                         nn_min_copy_number=nn_min_copy_number,
                         nn_max_percentile=nn_max_percentile,
                         nn_filter_copy_number=nn_filter_copy_number,
+                        score=score,
+                        n_draws=n_draws,
+                        single_dist_scamp=single_dist_scamp,
+                        scamp_min_copy_number=scamp_min_copy_number,
+                        scamp_max_percentile=scamp_max_percentile,
+                        scamp_filter_copy_number=scamp_filter_copy_number,
                     )
                     result_rows.append(
                         {
@@ -347,6 +363,12 @@ def run_sample(
     nn_min_copy_number=2.0,
     nn_max_percentile=99.0,
     nn_filter_copy_number=2.5,
+    score="ratio",
+    n_draws=1,
+    single_dist_scamp=False,
+    scamp_min_copy_number=2.0,
+    scamp_max_percentile=99.9,
+    scamp_filter_copy_number=2.5,
 ):
     """Runs prediction and species deconvolution on one copy-number file.
 
@@ -389,6 +411,10 @@ def run_sample(
             above this before the GMM fit (GMM and KNN; None = no minimum).
         nn_min_copy_number, nn_max_percentile, nn_filter_copy_number: The model's
             preprocessing of what it scores (defaults 2.0 / 99.0 / 2.5).
+        score, n_draws, single_dist_scamp, scamp_*: GMM scoring (P7). score "ratio" (scaup) or
+            "softmax" (scAmp); n_draws = draws of 1,000 sampled cells per distribution, called on the mean
+            probability; single_dist_scamp = if only one distribution has weight > min_weight, score the
+            gene's untrimmed cells as scAmp does (scamp_* preprocessing, softmax >= decision_rule).
 
     Returns:
         The list of log lines for this run.
@@ -403,6 +429,9 @@ def run_sample(
     out_log.append(f"NN min copy number (keep >): {nn_min_copy_number}")
     out_log.append(f"NN max percentile (keep <=): {nn_max_percentile}")
     out_log.append(f"NN filter copy number (score if mean >=): {nn_filter_copy_number}")
+    out_log.append(f"GMM score: {score}; draws per sampled distribution: {n_draws}")
+    out_log.append(f"Single distribution -> scAmp scoring: {single_dist_scamp} "
+                   f"(scAmp preprocessing {scamp_min_copy_number} / {scamp_max_percentile} / {scamp_filter_copy_number})")
 
     # Detect extension
     out_log.append(f"Running {file}")
@@ -457,6 +486,12 @@ def run_sample(
             nn_min_copy_number=nn_min_copy_number,
             nn_max_percentile=nn_max_percentile,
             nn_filter_copy_number=nn_filter_copy_number,
+            score=score,
+            n_draws=n_draws,
+            single_dist_scamp=single_dist_scamp,
+            scamp_min_copy_number=scamp_min_copy_number,
+            scamp_max_percentile=scamp_max_percentile,
+            scamp_filter_copy_number=scamp_filter_copy_number,
         )
     else:
         prediction_df = pd.read_csv(predictions, sep="\t")
