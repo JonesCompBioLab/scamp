@@ -1,7 +1,6 @@
 from sklearn.mixture import GaussianMixture
 from kneed import KneeLocator
 import numpy as np
-from .NN_model import SCAMP
 import torch
 import math
 from scipy.stats import norm
