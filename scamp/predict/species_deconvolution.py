@@ -1,29 +1,35 @@
+import heapq
+import os
+import shutil
+from collections import defaultdict
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+
+import anndata as ad
+import numpy as np
+import pandas as pd
+import scanpy as sc
+import scipy.sparse as sp
 from cnmf import cNMF
 from cnmf.cnmf import efficient_ols_all_cols
-import numpy as np
-import random
-from collections import defaultdict
-import pandas as pd
-import anndata as ad
-import scipy.sparse as sp
-import scanpy as sc
-from scipy.stats import pearsonr
-import os
-from pathlib import Path
-import shutil
-from scipy.cluster.hierarchy import linkage, fcluster
-from sklearn.metrics import silhouette_score
-from sklearn.metrics import pairwise_distances
-import time
+from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.optimize import nnls
-import heapq
-from io import StringIO
-from contextlib import redirect_stdout, redirect_stderr
-import matplotlib.pyplot as plt
+from sklearn.metrics import pairwise_distances, silhouette_score
 
 
-# Get rid of genes that are duplicates (but keep a dict of which were connected to which)
 def remove_duplicates(cellbygene, tol = 1e-5) :
+    """Collapses genes that have the same copy-number profile across cells.
+
+    Args:
+        cellbygene: Cell-by-gene copy-number DataFrame.
+        tol: Largest absolute difference, in every cell, for two genes to count
+            as duplicates.
+
+    Returns:
+        A tuple `(df_unique, column_groups)`. `df_unique` keeps the first gene of
+        each group of duplicates. `column_groups` maps each kept gene to all the
+        genes it stands for, including itself.
+    """
     keep_cols = []
     column_groups = {}
 
@@ -44,7 +50,6 @@ def remove_duplicates(cellbygene, tol = 1e-5) :
     return df_unique, column_groups
 
 
-# Uses ablation method
 def cNMF_deconvolution(
         cellbygene_df, 
         sample_name, 
@@ -61,6 +66,43 @@ def cNMF_deconvolution(
         seed = 10,
         verbose = False
 ) :
+    """Groups genes into ecDNA species with cNMF, assigning genes by ablation.
+
+    cNMF is run on copy-numbers above the chromosomal baseline of 2. Each gene's
+    weight in each species is then set to zero in turn, and the resulting increase
+    in reconstruction error is that gene's score for the species. A gene joins
+    every species where its score is above `score_cutoff`, or the species with its
+    highest score if there are none. Species left with no genes are dropped.
+
+    Writes intermediate files to `log_dir` and removes the cNMF temporary folder
+    when done.
+
+    Args:
+        cellbygene_df: Cell-by-gene copy-number DataFrame, still including the
+            chromosomal baseline of 2.
+        sample_name: Name for the cNMF run and its log folder.
+        out_log: List of log lines; cNMF's output is appended to it.
+        n_iter: Number of NMF runs per number of species.
+        error_w: Weight of reconstruction error when choosing the number of species.
+        score_cutoff: Score above which a gene is assigned to a species.
+        ecDNA_remove_cutoff: Species whose highest spectra score is below this are
+            dropped, unless that would drop all of them.
+        log_dir: Directory for cNMF intermediate files.
+        density_threshold: Density threshold for the cNMF consensus.
+        hier_ddist: Distance for null nodes in hierarchical clustering, used to set
+            `max_species` when it is None.
+        max_species: Largest number of species to check. If None, it is the number
+            chosen by hierarchical clustering.
+        num_ecDNA: Number of species, if known. If None, it is chosen from the
+            cNMF stability and reconstruction error.
+        seed: Random seed for cNMF.
+        verbose: Whether to log details of the deconvolution.
+
+    Returns:
+        A tuple `(species_to_gene, cell_by_ecDNA)`. `species_to_gene` maps each
+        species name ("pred_ecDNA_<n>") to its genes, and `cell_by_ecDNA` is a
+        cell-by-species DataFrame of ecDNA amounts estimated with NNLS.
+    """
     os.makedirs(log_dir, exist_ok= True)
 
 
@@ -190,10 +232,14 @@ def cNMF_deconvolution(
 
 
 def residualize(Y, X):
-    """
-    Remove effect of X from Y.
-    Y: (n_cells, n_targets) or (n_cells,)
-    X: (n_cells, n_covariates)
+    """Removes the linear effect of `X` from `Y`.
+
+    Args:
+        Y: Array of shape (n_cells, n_targets) or (n_cells,).
+        X: Covariates, of shape (n_cells, n_covariates).
+
+    Returns:
+        The residuals of a least-squares fit of `Y` on `X`, with the same shape as `Y`.
     """
     XtX = X.T @ X
     XtX_inv = np.linalg.inv(XtX + 1e-12 * np.eye(X.shape[1]))
@@ -202,30 +248,46 @@ def residualize(Y, X):
 
 
 def fwl_beta(Xk, Y_res):
+    """Least-squares coefficient of `Y_res` on a single covariate `Xk`.
+
+    With `Xk` and `Y_res` both residualized on the other covariates (see
+    `residualize`), this is that covariate's coefficient in the full regression,
+    by the Frisch-Waugh-Lovell theorem.
+
+    Args:
+        Xk: Covariate, of shape (n_cells,).
+        Y_res: Residualized targets, of shape (n_cells, n_targets) or (n_cells,).
+
+    Returns:
+        The coefficient for each target, of shape (n_targets,), or a scalar.
+    """
     return (Xk.T @ Y_res) / (Xk.T @ Xk + 1e-12)
 
 
 
-'''
-PARAMETERS
-
-cellbygene_df: pandas dataframe cells by genes
-ddist: parameter for choosing k
-max_species: maximum species count to check. if None, set to the number of genes
-num_ecDNA: set if number of species known
-
-RETURNS:
-
-species_to_gene: mapping of ecDNA species to genes
-cell_by_ecDNA: cell by ecDNA dataframe
-
-'''
-def hier_deconvolution(
-        cellbygene_df, 
+def hierarchical_deconvolution(
+        cellbygene_df,
         ddist = 1.3,
         max_species = None,
         num_ecDNA = None
-) :  
+) :
+    """Groups genes into ecDNA species by hierarchical clustering of their correlations.
+
+    Args:
+        cellbygene_df: Cell-by-gene copy-number DataFrame, still including the
+            chromosomal baseline of 2.
+        ddist: Distance for the null node in the silhouette score used to choose
+            the number of species.
+        max_species: Largest number of species to check. If None, checks up to the
+            number of genes minus 1.
+        num_ecDNA: Number of species, if known. If None, it is chosen by silhouette score.
+
+    Returns:
+        A tuple `(species_to_gene, cell_by_ecDNA)`. `species_to_gene` maps each
+        species name ("pred_ecDNA_<n>") to its genes. `cell_by_ecDNA` is a
+        cell-by-species DataFrame: for each species, the mean copy-number above 2
+        of its genes whose total is within 1.3 times that of its lowest gene.
+    """
 
     X = cellbygene_df
     embed = np.corrcoef(X, rowvar=False)
@@ -271,29 +333,7 @@ def hier_deconvolution(
 
     return species_to_gene, cellbyecDNA
 
-'''
-PARAMETERS:
-
-cellbygene_df: a pandas df with columns as genes and rows as cells. Should still include chromosomal 2
-cNMF_thresh: error threshold to use cNMF instead of hierarchical
-sample_name: name for cNMF log 
-max_species: number of ecDNA species to check up to. If none, uses hierarchical to figure it out
-n_iter: number of times to run NMF per k
-error_w: weight for error when choosing k. Default is 0.25 
-score_cutoff: spectra score cutoff
-log_dir: where to store the cNMF logs
-density_threshold: density parameter for cNMF
-hier_ddist: hierarchical parameter
-num_ecDNA: set if known
-seed: random seed for cNMF
-
-RETURNS:
-
-species_by_gene: mapping of ecDNA species to genes
-cellbyecDNA: cell by ecDNA dataframe
-
-'''
-def combo_deconvolution(
+def hybrid_deconvolution(
         cellbygene_df,   
         out_log,
         cNMF_thresh = 0.55,
@@ -310,6 +350,41 @@ def combo_deconvolution(
         seed = 10,
         verbose = False
 ) :
+    """Groups genes into ecDNA species, choosing between hierarchical clustering and cNMF.
+
+    Genes are first clustered hierarchically. If the clusters look like they
+    overlap (genes shared between species), cNMF is run instead, with the
+    hierarchical number of species as its upper bound. Otherwise the hierarchical
+    clusters are kept, and their per-cell amounts are estimated with NNLS.
+
+    Args:
+        cellbygene_df: Cell-by-gene copy-number DataFrame, still including the
+            chromosomal baseline of 2.
+        out_log: List of log lines; messages are appended to it.
+        cNMF_thresh: Each cluster's mean profile is fit as a combination of the
+            others. Overlap is detected, and cNMF used, when the three lowest fit
+            errors are all below this. Needs at least 3 clusters.
+        sample_name: Name for the cNMF run and its log folder.
+        max_species: Largest number of species to check when clustering
+            hierarchically. If None, checks up to the number of genes minus 1.
+        n_iter: Number of NMF runs per number of species.
+        error_w: Weight of reconstruction error when choosing the number of cNMF species.
+        score_cutoff: Score above which a gene is assigned to a cNMF species.
+        ecDNA_remove_cutoff: cNMF species whose highest spectra score is below this
+            are dropped.
+        log_dir: Directory for cNMF intermediate files.
+        density_threshold: Density threshold for the cNMF consensus.
+        hier_ddist: Distance for null nodes in hierarchical clustering.
+        num_ecDNA: Number of hierarchical species, if known. If None, it is chosen
+            by silhouette score.
+        seed: Random seed for cNMF.
+        verbose: Whether to log details of the deconvolution.
+
+    Returns:
+        A tuple `(species_to_gene, cell_by_ecDNA)`. `species_to_gene` maps each
+        species name ("pred_ecDNA_<n>") to its genes, and `cell_by_ecDNA` is a
+        cell-by-species DataFrame of estimated ecDNA amounts.
+    """
 
     X = cellbygene_df
     embed = np.corrcoef(X, rowvar=False)
@@ -343,24 +418,26 @@ def combo_deconvolution(
             
 
 
-'''
-PARAMETERS
-
-cellbygene_df: pandas dataframe cells by genes
-threshold: distance threshold for hierarchical clustering
-num_ecDNA: set if number of species known
-
-RETURNS:
-
-species_to_gene: mapping of ecDNA species to genes
-cell_by_ecDNA: cell by ecDNA dataframe
-
-'''
 def naive_deconvolution(
         cellbygene_df,
         threshold = 0.65,
         num_ecDNA = None
-) :        
+) :
+    """Groups genes into ecDNA species by hierarchical clustering of their copy-number profiles.
+
+    Args:
+        cellbygene_df: Cell-by-gene copy-number DataFrame, still including the
+            chromosomal baseline of 2.
+        threshold: Correlation distance at which to cut the clustering tree, used
+            when `num_ecDNA` is None.
+        num_ecDNA: Number of species, if known.
+
+    Returns:
+        A tuple `(species_to_gene, cell_by_ecDNA)`. `species_to_gene` maps each
+        species name ("pred_ecDNA_<n>") to its genes. `cell_by_ecDNA` is a
+        cell-by-species DataFrame: for each species, the mean copy-number above 2
+        of its genes whose total is within 1.3 times that of its lowest gene.
+    """
     X = cellbygene_df.T
 
     if num_ecDNA is None :
@@ -505,7 +582,7 @@ def _cNMF_find_k(max_species, cellbygene_df, hier_ddist, log_dir, sample_name, c
 
 
 
-# Version of hierarchical that uses nnls (best for combo since theoretically we know there are uniques)
+# Version of hierarchical that uses nnls (best for hybrid since theoretically we know there are uniques)
 def _hier_nnls(
         cellbygene_df, 
         ddist = 1.3,
@@ -700,7 +777,7 @@ def _hier_get_k(X, max_species, ddist, leeway = 0) :
             best_num = nums_to_try[idx]
     return best_num
 
-# Check if there are overlaps and we should use cNMF rather than combo
+# Check if there are overlaps and we should use cNMF rather than hierarchical in hybrid
 def _check_overlap(X, clusters, cNMF_thresh, iters = 20) :
     X = X - 2
     cluster_no = len(set(clusters))

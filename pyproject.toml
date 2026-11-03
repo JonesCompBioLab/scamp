@@ -188,7 +188,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.pydocstyle]
-convention = "numpy"
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "docs/*" = ["I", "BLE001"]

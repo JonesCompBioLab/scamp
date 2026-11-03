@@ -393,7 +393,7 @@ def predict_ecdna(
         int, typer.Option(help="Number of nearest neighbors for KNN.")
     ] = 100,
     cNMF_thresh: Annotated[
-        float, typer.Option(help="Threshold for choosing cNMF when using combo")
+        float, typer.Option(help="Threshold for choosing cNMF when using auto")
     ] = 0.55,
     error_w: Annotated[
         float,
