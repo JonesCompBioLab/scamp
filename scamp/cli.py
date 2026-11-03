@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import scanpy as sc
 import typer
 
-from scamp import atac_cnv, vis, plotting, predict
+from scamp import atac_cnv, io, plotting, predict, vis
 from scamp.mixins.errors import CLIError
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
@@ -306,8 +306,7 @@ def visualize(
         f"cellxgene launch {temp_folder}/annotated_anndata.h5ad --gene-sets-file {temp_folder}/ecDNA_gene_set.csv --open"
     )
 
-
-@scamp_app.command(name="predict", help="Predict ecDNA status.")
+@scamp_app.command(name="predict", help="Predict ecDNA status with scRASCAL.")
 def predict_ecdna(
     output_dir: OutputDirArg,
     copy_numbers: Annotated[
@@ -329,12 +328,12 @@ def predict_ecdna(
     decision_rule: Annotated[
         float, typer.Option(help="NN likelihood decision rule.")
     ] = 0.5,
-    # min_copy_number: Annotated[
-    #     float, typer.Option(help="Minimum copy-number to consider.")
-    # ] = 2.0,
-    # max_percentile: Annotated[
-    #     float, typer.Option(help="Maximum percentile to cap copy-numbers.")
-    # ] = 99.0,
+    min_copy_number: Annotated[
+        float, typer.Option(help="Minimum copy-number to consider.")
+    ] = 2.0,
+    max_percentile: Annotated[
+        float, typer.Option(help="Maximum percentile to cap copy-numbers.")
+    ] = 99.0,
     filter_copy_number: Annotated[
         float,
         typer.Option(
@@ -348,7 +347,7 @@ def predict_ecdna(
         ),
     ] = None,
     predict_method: Annotated[
-        Literal["NN", "KNN", "GMM"],
+        Literal["SCAMP", "KNN", "GMM"],
         typer.Option(
             help="Method to use for predicting ecDNA. NN (old version), KNN, or GMM"
         ),
@@ -411,7 +410,31 @@ def predict_ecdna(
 
     os.makedirs(output_dir, exist_ok=True)
 
-    out_log = predict.run_sample(
+    counts_df = io.read_copy_numbers_file(copy_numbers)
+
+    # Detect extension
+    out_log.append(f"Running {file}")
+    p = Path(file)
+    if os.path.isdir(p):
+        has_matrix = any(p.glob("matrix.mtx*"))
+        has_barcodes = any(p.glob("barcodes.tsv*"))
+        if has_matrix and has_barcodes:
+            mode = "MEX"
+        else:
+            out_log.append(f"{file} is non-MEX folder, skipping")
+            return out_log
+
+    else:
+        copy_numbers_ext = file.split(".")[-1]
+        if copy_numbers_ext == "h5ad":
+            mode = "anndata"
+        elif copy_numbers_ext == "csv" or copy_numbers_ext == "tsv":
+            mode = "copynumber"
+        else:
+            out_log.append(f"{file} does not have extension h5ad, tsv, or csv. Skipping")
+            return out_log
+
+    predictions, out_log = predict.predict(
         copy_numbers,
         output_dir,
         predictions,
@@ -419,6 +442,8 @@ def predict_ecdna(
         whitelist_file,
         decision_rule,
         filter_copy_number,
+        min_copy_number,
+        max_percentile,
         predict_method,
         one_thresh,
         kneedle_coeff,
@@ -434,13 +459,13 @@ def predict_ecdna(
         verbose,
     )
 
-    # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
-    # if not no_plot:
-    #     plotting.plot_scamp_predictions_plotly(
-    #         predictions,
-    #         f"{output_dir}/ecDNA_predictions.html",
-    #         title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
-    #     )
+    predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
+    if not no_plot:
+        plotting.plot_scamp_predictions_plotly(
+            predictions,
+            f"{output_dir}/ecDNA_predictions.html",
+            title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
+        )
 
     with open(f"{output_dir}/log.log", "w") as f:
         f.writelines(line + "\n" for line in out_log)

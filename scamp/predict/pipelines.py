@@ -48,7 +48,7 @@ def predict(
             listed cells are kept. If None, all cells are used.
         decision_rule: SCAMP likelihood threshold for calling a gene ecDNA-positive.
         filter_copy_number: Drop genes whose mean copy-number is below this.
-        predict_method: One of "NN", "GMM" or "KNN".
+        predict_method: One of "SCAMP", "GMM" or "KNN".
         one_thresh: Threshold for choosing a single distribution in the GMM fit
             (GMM and KNN).
         kneedle_coeff: Higher values make kneedle pick fewer GMM distributions
