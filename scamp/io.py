@@ -3,6 +3,7 @@ Functions to read in data.
 """
 
 import os
+from pathlib import Path
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 

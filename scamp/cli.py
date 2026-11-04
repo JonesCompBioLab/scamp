@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import time
 from typing import Annotated, Literal, Union
 import warnings
 
@@ -409,63 +410,59 @@ def predict_ecdna(
 ) -> None:
 
     os.makedirs(output_dir, exist_ok=True)
+    out_log = []
 
     counts_df = io.read_copy_numbers_file(copy_numbers)
 
     # Detect extension
-    out_log.append(f"Running {file}")
-    p = Path(file)
-    if os.path.isdir(p):
-        has_matrix = any(p.glob("matrix.mtx*"))
-        has_barcodes = any(p.glob("barcodes.tsv*"))
-        if has_matrix and has_barcodes:
-            mode = "MEX"
-        else:
-            out_log.append(f"{file} is non-MEX folder, skipping")
-            return out_log
+    out_log.append(f"Running {copy_numbers}")
+    start = time.time()
+    filename = Path(copy_numbers).stem
 
-    else:
-        copy_numbers_ext = file.split(".")[-1]
-        if copy_numbers_ext == "h5ad":
-            mode = "anndata"
-        elif copy_numbers_ext == "csv" or copy_numbers_ext == "tsv":
-            mode = "copynumber"
-        else:
-            out_log.append(f"{file} does not have extension h5ad, tsv, or csv. Skipping")
-            return out_log
-
-    predictions, out_log = predict.predict(
-        copy_numbers,
-        output_dir,
-        predictions,
+    
+    prediction_df, out_log = predict.predict(
+        counts_df,
+        out_log,
         model_file,
         whitelist_file,
-        decision_rule,
-        filter_copy_number,
-        min_copy_number,
-        max_percentile,
-        predict_method,
-        one_thresh,
-        kneedle_coeff,
-        min_weight,
-        var_scale,
-        k,
+        decision_rule=decision_rule,
+        filter_copy_number=filter_copy_number,
+        predict_method=predict_method,
+        one_thresh=one_thresh,
+        kneedle_coeff=kneedle_coeff,
+        min_weight=min_weight,
+        var_scale=var_scale,
+        k=k,
+        verbose=False,
+    )
+
+    prediction_df, cell_by_ecDNA, out_log = predict.cluster(
+        filename,
+        prediction_df,
+        counts_df,
         deconvolution_method,
         hier_ddist,
         cNMF_thresh,
         error_w,
         score_cutoff,
         log_dir,
+        out_log,
         verbose,
     )
 
-    predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
-    if not no_plot:
-        plotting.plot_scamp_predictions_plotly(
-            predictions,
-            f"{output_dir}/ecDNA_predictions.html",
-            title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
-        )
+    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)
+    cell_by_ecDNA.to_csv(f"{output_dir}/cell_by_ecDNA_{filename}.tsv", sep="\t", index=False)
+
+    # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
+    # if not no_plot:
+    #     plotting.plot_scamp_predictions_plotly(
+    #         predictions,
+    #         f"{output_dir}/ecDNA_predictions.html",
+    #         title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
+    #     )
+
+    end = time.time()
+    out_log.append(f"File {copy_numbers} completed in {end - start:.2f} seconds")
 
     with open(f"{output_dir}/log.log", "w") as f:
         f.writelines(line + "\n" for line in out_log)

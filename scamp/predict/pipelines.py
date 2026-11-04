@@ -7,12 +7,9 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-import os
 import numpy as np
 import pandas as pd
 import scanpy as sc
-import time
-from pathlib import Path
 
 from scamp import io
 from scamp import models
@@ -20,8 +17,8 @@ from scamp.predict import predict_methods, species_deconvolution
 
 
 def predict(
-    out_log,
     counts_df,
+    out_log,
     saved_model_directory,
     whitelist_file,
     decision_rule,
@@ -177,7 +174,7 @@ def predict(
     prediction_df.insert(1, "mean", gene_counts.mean().to_numpy())
     prediction_df.insert(2, "var", gene_counts.var(ddof=0).to_numpy())
 
-    return prediction_df
+    return prediction_df, out_log
 
 
 def cluster(
@@ -288,150 +285,4 @@ def cluster(
                     predict_df.loc[mask, "Species"] = str(species)
                 else:
                     predict_df.loc[mask, "Species"] = current + "," + str(species)
-    return predict_df, cell_by_ecDNA
-
-
-# Can skip the first step by providing a predictions path (otherwise set it to none)
-def run_sample(
-    file,
-    output_dir,
-    predictions,
-    model_file,
-    whitelist_file,
-    decision_rule,
-    filter_copy_number,
-    predict_method,
-    one_thresh,
-    kneedle_coeff,
-    min_weight,
-    var_scale,
-    k,
-    deconvolution_method,
-    hier_ddist,
-    cNMF_thresh,
-    error_w,
-    score_cutoff,
-    log_dir,
-    verbose,
-):
-    """Runs prediction and species deconvolution on one copy-number file.
-
-    Writes `ecDNA_preds_<name>.tsv` and `cell_by_ecDNA_<name>.tsv` to `output_dir`,
-    where `<name>` is the input file's stem. The predictions file is also written
-    before deconvolution, so it is kept if deconvolution fails.
-
-    Args:
-        file: Path to a .h5ad, .csv or .tsv file, or a MEX directory (containing
-            matrix.mtx* and barcodes.tsv*). Any other input is skipped and noted
-            in the log.
-        output_dir: Directory where the output TSVs are written.
-        predictions: Path to an existing predictions TSV. If given, prediction is
-            skipped and only deconvolution runs. Use None to predict.
-        model_file: Path to a saved SCAMP model.
-        whitelist_file: Headerless file with one cell barcode per line. Only the
-            listed cells are kept. If None, all cells are used.
-        decision_rule: SCAMP likelihood threshold for calling a gene ecDNA-positive.
-        filter_copy_number: Drop genes whose mean copy-number is below this.
-        predict_method: One of "NN", "GMM" or "KNN".
-        one_thresh: Threshold for choosing a single distribution in the GMM fit
-            (GMM and KNN).
-        kneedle_coeff: Higher values make kneedle pick fewer GMM distributions
-            (GMM and KNN).
-        min_weight: GMM distributions with less weight than this are ignored (GMM).
-        var_scale: Distribution variances are scaled as var * weight ** var_scale.
-            Larger values reduce false positives (GMM and KNN).
-        k: Number of nearest neighbors for KNN.
-        deconvolution_method: One of "hier", "cNMF" or "auto" ("auto" chooses
-            between the two).
-        hier_ddist: Distance for null nodes in hierarchical clustering.
-        cNMF_thresh: Threshold for choosing cNMF when the method is "auto".
-        error_w: Weight of reconstruction error when choosing the number of cNMF species.
-        score_cutoff: Score above which a gene is assigned to a species.
-        log_dir: Directory for cNMF intermediate files.
-        verbose: Whether to log extra details.
-
-    Returns:
-        The list of log lines for this run.
-    """
-    out_log = [
-        f"Settings\nModel path: {model_file}\nDecision rule: {decision_rule}\nPrediction method: {predict_method}\nDeconvolution method: {deconvolution_method}"
-    ]
-    out_log.append(f"Copy number filter: {filter_copy_number}")
-
-    # Detect extension
-    out_log.append(f"Running {file}")
-    p = Path(file)
-    if os.path.isdir(p):
-        has_matrix = any(p.glob("matrix.mtx*"))
-        has_barcodes = any(p.glob("barcodes.tsv*"))
-        if has_matrix and has_barcodes:
-            mode = "MEX"
-        else:
-            out_log.append(f"{file} is non-MEX folder, skipping")
-            return out_log
-
-    else:
-        copy_numbers_ext = file.split(".")[-1]
-        if copy_numbers_ext == "h5ad":
-            mode = "anndata"
-        elif copy_numbers_ext == "csv" or copy_numbers_ext == "tsv":
-            mode = "copynumber"
-        else:
-            out_log.append(f"{file} does not have extension h5ad, tsv, or csv. Skipping")
-            return out_log
-
-    out_log.append(f"Running {file}")
-    start = time.time()
-    # Call different wrapper for each prediction type
-    if mode == "copynumber":
-        counts_df = io.read_copy_numbers_file(file)
-    elif mode == "MEX":
-        counts_df = io.read_mex_file(file)
-    else:
-        counts_df = io.read_anndata_file(file)
-
-    # Allow cutting in the middle of pipeline with old predictions file
-    if predictions is None:
-        prediction_df = predict(
-            out_log,
-            counts_df,
-            model_file,
-            whitelist_file,
-            decision_rule,
-            filter_copy_number,
-            predict_method,
-            one_thresh,
-            kneedle_coeff,
-            min_weight,
-            var_scale,
-            k,
-            verbose,
-        )
-    else:
-        prediction_df = pd.read_csv(predictions, sep="\t")
-
-    # Output early in case something breaks
-    filename = Path(file).stem
-    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)
-
-    prediction_df, cell_by_eCDNA = cluster(
-        filename,
-        prediction_df,
-        counts_df,
-        deconvolution_method,
-        hier_ddist,
-        cNMF_thresh,
-        error_w,
-        score_cutoff,
-        log_dir,
-        out_log,
-        verbose,
-    )
-
-    # Output predictions and visualizations
-    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)
-    cell_by_eCDNA.to_csv(f"{output_dir}/cell_by_ecDNA_{filename}.tsv", sep="\t", index=False)
-
-    end = time.time()
-    out_log.append(f"File {file} completed in {end - start:.2f} seconds")
-    return out_log
+    return predict_df, cell_by_ecDNA, out_log
