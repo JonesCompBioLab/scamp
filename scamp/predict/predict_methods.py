@@ -43,23 +43,18 @@ def GMM_ecDNA_predict(
     var_scale=0.5,
     min_weight=0.005,
     verbose=False,
-    gmm_max_percentile=100.0,
-    gmm_min_copy_number=None,
-    nn_min_copy_number=2.0,
-    nn_max_percentile=99.0,
-    nn_filter_copy_number=2.5,
-    score="ratio",
+    min_copy_number=2.0,
+    max_percentile=99.9,
+    filter_copy_number=2.5,
+    trim_before_gmm=False,
     n_draws=1,
     single_dist_scamp=False,
-    scamp_min_copy_number=2.0,
-    scamp_max_percentile=99.9,
-    scamp_filter_copy_number=2.5,
 ):
     """Predicts ecDNA status for one gene by fitting a GMM to its copy-numbers.
 
     Each fitted distribution with enough weight is sampled (with a seed derived
     from the copy-numbers and the distribution's index), and the samples are
-    classified with `NN_ecDNA_predict`. The gene is ecDNA-positive if any
+    classified with `SCAMP_ecDNA_predict`. The gene is ecDNA-positive if any
     distribution is, and the first positive distribution is returned.
 
     Args:
@@ -80,12 +75,19 @@ def GMM_ecDNA_predict(
             before sampling, to counteract small sample sizes.
         min_weight: Distributions with less weight than this (out of 1) are ignored.
         verbose: Whether to log per-distribution details.
-        gmm_max_percentile: Before the GMM fit, drop cells above this percentile
-            of the gene's copy-numbers (100 = keep all).
-        gmm_min_copy_number: Before the GMM fit, keep only cells with copy-number
-            strictly above this (None = no minimum).
-        nn_min_copy_number, nn_max_percentile, nn_filter_copy_number: Passed to
-            `NN_ecDNA_predict` (the model's preprocessing of what it scores).
+        min_copy_number: Copy-numbers at or below this are ignored when the model
+            scores a distribution.
+        max_percentile: Copy-numbers above this percentile are dropped when the
+            model scores a distribution.
+        filter_copy_number: A distribution whose mean copy-number is below this is
+            not scored.
+        trim_before_gmm: Whether to also apply `min_copy_number` and
+            `max_percentile` to the gene's cells before the GMM fit.
+        score: "ratio" (scaup) or "softmax" (published scAmp) model probability.
+        n_draws: Draws of 1000 sampled cells per distribution; the call uses the
+            mean probability.
+        single_dist_scamp: If only one distribution has weight above `min_weight`,
+            score the gene's untrimmed cells with softmax, as published scAmp does.
 
     Returns:
         A tuple `(prediction, probability, mean, var, weight)`: the predicted ecDNA
@@ -101,10 +103,8 @@ def GMM_ecDNA_predict(
     all_cells = input.copy()   # untrimmed, for single_dist_scamp
 
     # Optional trimming of the real cells before the GMM fit
-    if gmm_max_percentile < 100 or gmm_min_copy_number is not None:
-        input = _trim_cells(
-            input, gmm_max_percentile, gmm_min_copy_number
-        ).reshape(-1, 1)
+    if trim_before_gmm:
+        input = _trim_cells(input, max_percentile, min_copy_number).reshape(-1, 1)
         # Too few cells left to fit up to max_components - 1 distributions
         if len(input) < max_components:
             out_log.append(
@@ -120,12 +120,12 @@ def GMM_ecDNA_predict(
         out_log.append(f"Gene: {genes[0]}")
 
     # Only one distribution passes min_weight: score the gene as published scAmp does, on all of its
-    # (untrimmed) cells, with scAmp's preprocessing and softmax >= decision_rule
+    # (untrimmed) cells, with softmax >= decision_rule
     if single_dist_scamp and int((gmm.weights_ > min_weight).sum()) == 1:
         i = int(np.argmax(gmm.weights_))
         probability = _nn_probability(
-            model, all_cells, genes, "softmax", scamp_min_copy_number,
-            scamp_max_percentile, scamp_filter_copy_number)
+            model, all_cells, genes, "softmax", min_copy_number,
+            max_percentile, filter_copy_number)
         if verbose:
             out_log.append(f"Gene: {genes[0]}: one distribution above min_weight, scAmp scoring: {probability}")
         if probability >= decision_rule:
@@ -153,10 +153,10 @@ def GMM_ecDNA_predict(
                     mean, np.sqrt(var_scaled), size=1000
                 ).tolist()
                 probabilities.append(_nn_probability(
-                    model, samples, genes, score, nn_min_copy_number,
-                    nn_max_percentile, nn_filter_copy_number, out_log, verbose))
+                    model, samples, genes, min_copy_number,
+                    max_percentile, filter_copy_number, out_log, verbose))
             probability = float(np.mean(probabilities))
-            prediction = probability >= decision_rule if score == "softmax" else probability > decision_rule
+            prediction = probability >= decision_rule
             if prediction:
                 return True, probability, mean, var, weight
             max_probability = max(max_probability, probability)
@@ -219,10 +219,10 @@ def _GMM_fit(
 
 def _nn_probability(model, cells, genes, score, min_copy_number, max_percentile,
                     filter_copy_number, out_log=None, verbose=False):
-    """The model's ecDNA probability for one set of cells: "ratio" = scaup's NN_ecDNA_predict score,
+    """The model's ecDNA probability for one set of cells: "ratio" = scaup's SCAMP_ecDNA_predict score,
     "softmax" = published scAmp's model.proba. 0.0 if the cells fail the model's copy-number filter."""
     if score == "ratio":
-        return float(NN_ecDNA_predict(
+        return float(SCAMP_ecDNA_predict(
             model, cells, [] if out_log is None else out_log, genes, 0.5, verbose,
             min_copy_number=min_copy_number, max_percentile=max_percentile,
             filter_copy_number=filter_copy_number)[1])
@@ -235,7 +235,7 @@ def _nn_probability(model, cells, genes, score, min_copy_number, max_percentile,
         return float(model.proba(torch.Tensor(X))[0, 1])
 
 
-def NN_ecDNA_predict(
+def SCAMP_ecDNA_predict(
     model,
     input,
     out_log,
@@ -243,7 +243,7 @@ def NN_ecDNA_predict(
     decision_rule=0.5,
     verbose=False,
     min_copy_number=2.0,
-    max_percentile=99.0,
+    max_percentile=99.9,
     filter_copy_number=2.5,
 ):
     """Predicts ecDNA status for one copy-number distribution with the SCAMP model.
@@ -283,10 +283,12 @@ def NN_ecDNA_predict(
             out_log.append(f" {genes[0]} did not pass filter")
         return False, 0
 
+    ecDNA_pred = float(model.proba(torch.Tensor(X))[0, 1])
+
     # Just get the second to last layer
-    _x = model.forward(torch.Tensor(X))
-    _x = _x[0]
-    ecDNA_pred = _x[1] / (_x[0] + _x[1])
+    # _x = model.forward(torch.Tensor(X))
+    # _x = _x[0]
+    # ecDNA_pred = _x[1] / (_x[0] + _x[1])
 
     return (ecDNA_pred > decision_rule).item(), ecDNA_pred
 
@@ -305,24 +307,19 @@ def KNN_ecDNA_predict(
     var_scale=0.5,
     decision_rule=0.5,
     verbose=False,
-    gmm_max_percentile=100.0,
-    gmm_min_copy_number=None,
-    nn_min_copy_number=2.0,
-    nn_max_percentile=99.0,
-    nn_filter_copy_number=2.5,
+    min_copy_number=2.0,
+    max_percentile=99.9,
+    filter_copy_number=2.5,
+    trim_before_gmm=False,
     min_weight=0.005,
     knn_min_mean=2.5,
     knn_min_var=10,
-    score="ratio",
     single_dist_scamp=False,
-    scamp_min_copy_number=2.0,
-    scamp_max_percentile=99.9,
-    scamp_filter_copy_number=2.5,
 ):
     """Predicts ecDNA status for one gene from the neighborhoods of individual cells.
 
     Cells are assigned to distributions of a GMM fit, and each cell's neighbors in
-    the same distribution are classified with `NN_ecDNA_predict`. Inputs with more
+    the same distribution are classified with `SCAMP_ecDNA_predict`. Inputs with more
     than 4000 cells are randomly subsampled to 4000, with a seed derived from the
     copy-numbers.
 
@@ -346,13 +343,24 @@ def KNN_ecDNA_predict(
         decision_rule: SCAMP likelihood threshold for calling a neighborhood
             ecDNA-positive.
         verbose: Whether to log per-cell details.
-        gmm_max_percentile: Drop cells above this percentile of the gene's
-            copy-numbers (100 = keep all). The trimmed cells are used for the GMM
-            fit, the subsample and the neighborhoods.
-        gmm_min_copy_number: Keep only cells with copy-number strictly above this
-            (None = no minimum). Used like `gmm_max_percentile`.
-        nn_min_copy_number, nn_max_percentile, nn_filter_copy_number: Passed to
-            `NN_ecDNA_predict` (the model's preprocessing of what it scores).
+        min_copy_number: Copy-numbers at or below this are ignored when the model
+            scores a neighborhood.
+        max_percentile: Copy-numbers above this percentile are dropped when the
+            model scores a neighborhood.
+        filter_copy_number: A neighborhood whose mean copy-number is below this is
+            not scored.
+        trim_before_gmm: Whether to also apply `min_copy_number` and
+            `max_percentile` to the gene's cells first. The trimmed cells are used
+            for the GMM fit, the subsample and the neighborhoods.
+        min_weight: Distributions with less weight than this count as absent for
+            `single_dist_scamp`.
+        knn_min_mean: A neighborhood is scored only if its mean copy-number
+            exceeds this (-inf = no gate).
+        knn_min_var: A neighborhood is scored only if its copy-number variance
+            exceeds this (-inf = no gate).
+        score: "ratio" (scaup) or "softmax" (published scAmp) model probability.
+        single_dist_scamp: If only one distribution has weight above `min_weight`,
+            score the gene's untrimmed cells with softmax, as published scAmp does.
 
     Returns:
         A tuple `(prediction, num_positive_cells)`: the predicted ecDNA status, and
@@ -364,8 +372,8 @@ def KNN_ecDNA_predict(
     all_cells = np.asarray(input, dtype=float).copy()   # untrimmed, for single_dist_scamp
 
     # Optional trimming of the real cells, before the subsample and the GMM fit
-    if gmm_max_percentile < 100 or gmm_min_copy_number is not None:
-        input = _trim_cells(input, gmm_max_percentile, gmm_min_copy_number)
+    if trim_before_gmm:
+        input = _trim_cells(input, max_percentile, min_copy_number)
         # Too few cells left to fit up to max_components - 1 distributions
         if len(input) < max_components:
             out_log.append(
@@ -395,12 +403,12 @@ def KNN_ecDNA_predict(
     x = np.array(arr).reshape(-1)
 
     # Only one distribution passes min_weight: score the gene as published scAmp does (P8, as in GMM
-    # mode): all of its untrimmed cells, scAmp's preprocessing, softmax >= decision_rule.
+    # mode): all of its untrimmed cells, softmax >= decision_rule.
     # NumberOfPositiveCells is then reported as -1 (no neighbourhoods scored).
     if single_dist_scamp and int((gmm.weights_ > min_weight).sum()) == 1:
         probability = _nn_probability(
-            model, all_cells, genes, "softmax", scamp_min_copy_number,
-            scamp_max_percentile, scamp_filter_copy_number)
+            model, all_cells, genes, "softmax", min_copy_number,
+            max_percentile, filter_copy_number)
         return probability >= decision_rule, -1
 
     means = gmm.means_.flatten()
@@ -466,21 +474,21 @@ def KNN_ecDNA_predict(
         # Gate: Kevin set mean > 2.5 and var > 10 to save runtime (P8: configurable; -inf = off)
         if np.mean(subset) > knn_min_mean and np.var(subset) > knn_min_var:
             if score == "ratio":
-                res = NN_ecDNA_predict(
+                res = SCAMP_ecDNA_predict(
                     model,
                     subset.tolist(),
                     out_log,
                     genes,
                     decision_rule,
                     verbose,
-                    min_copy_number=nn_min_copy_number,
-                    max_percentile=nn_max_percentile,
-                    filter_copy_number=nn_filter_copy_number,
+                    min_copy_number=min_copy_number,
+                    max_percentile=max_percentile,
+                    filter_copy_number=filter_copy_number,
                 )[0]
             else:   # softmax >= decision_rule, as published scAmp
                 res = _nn_probability(
-                    model, subset.tolist(), genes, "softmax", nn_min_copy_number,
-                    nn_max_percentile, nn_filter_copy_number, out_log, verbose) >= decision_rule
+                    model, subset.tolist(), genes, "softmax", min_copy_number,
+                    max_percentile, filter_copy_number, out_log, verbose) >= decision_rule
             if verbose:
                 out_log.append(f"{genes[0]} ecDNA:")
             out.append(res)
