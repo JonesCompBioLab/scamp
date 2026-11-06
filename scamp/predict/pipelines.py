@@ -7,12 +7,9 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-import os
 import numpy as np
 import pandas as pd
 import scanpy as sc
-import time
-from pathlib import Path
 
 from scamp import io
 from scamp import models
@@ -20,8 +17,8 @@ from scamp.predict import predict_methods, species_deconvolution
 
 
 def predict(
-    out_log,
     counts_df,
+    out_log,
     saved_model_directory,
     whitelist_file,
     decision_rule,
@@ -61,7 +58,7 @@ def predict(
             listed cells are kept. If None, all cells are used.
         decision_rule: SCAMP likelihood threshold for calling a gene ecDNA-positive.
         filter_copy_number: Drop genes whose mean copy-number is below this.
-        predict_method: One of "NN", "GMM" or "KNN".
+        predict_method: One of "SCAMP", "GMM" or "KNN".
         one_thresh: Threshold for choosing a single distribution in the GMM fit
             (GMM and KNN).
         kneedle_coeff: Higher values make kneedle pick fewer GMM distributions
@@ -235,7 +232,7 @@ def predict(
     prediction_df.insert(1, "mean", gene_counts.mean().to_numpy())
     prediction_df.insert(2, "var", gene_counts.var(ddof=0).to_numpy())
 
-    return prediction_df
+    return prediction_df, out_log
 
 
 def cluster(
@@ -296,17 +293,17 @@ def cluster(
 
     # One distinct copy-number profile is one species. The methods below need at least two
     # profiles to compare (np.corrcoef of a single column is a scalar), so assign it directly;
-    # this is the usage hier_deconvolution and _hier_nnls give for a single profile.
+    # this is the usage hierarchical_deconvolution and _hier_nnls give for a single profile.
     if df_unique.shape[1] == 1:
         species_to_gene = {"pred_ecDNA_1": list(df_unique.columns)}
         cell_by_ecDNA = (df_unique - 2).clip(lower=0)
         cell_by_ecDNA.columns = ["pred_ecDNA_1"]
     elif deconvolution_method == "hier":
-        species_to_gene, cell_by_ecDNA = species_deconvolution.hier_deconvolution(
+        species_to_gene, cell_by_ecDNA = species_deconvolution.hierarchical_deconvolution(
             df_unique, hier_ddist
         )
     elif deconvolution_method == "auto":
-        species_to_gene, cell_by_ecDNA = species_deconvolution.combo_deconvolution(
+        species_to_gene, cell_by_ecDNA = species_deconvolution.hybrid_deconvolution(
             df_unique,
             out_log,
             cNMF_thresh,
@@ -346,7 +343,7 @@ def cluster(
                     predict_df.loc[mask, "Species"] = str(species)
                 else:
                     predict_df.loc[mask, "Species"] = current + "," + str(species)
-    return predict_df, cell_by_ecDNA
+    return predict_df, cell_by_ecDNA, out_log
 
 
 # Can skip the first step by providing a predictions path (otherwise set it to none)
@@ -542,3 +539,4 @@ def run_sample(
     end = time.time()
     out_log.append(f"File {file} completed in {end - start:.2f} seconds")
     return out_log
+    return predict_df, cell_by_ecDNA, out_log

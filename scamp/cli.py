@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import time
 from typing import Annotated, Literal, Union
 import warnings
 
@@ -15,7 +16,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import scanpy as sc
 import typer
 
-from scamp import atac_cnv, vis, plotting, predict
+from scamp import atac_cnv, io, plotting, predict, vis
 from scamp.mixins.errors import CLIError
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
@@ -306,8 +307,7 @@ def visualize(
         f"cellxgene launch {temp_folder}/annotated_anndata.h5ad --gene-sets-file {temp_folder}/ecDNA_gene_set.csv --open"
     )
 
-
-@scamp_app.command(name="predict", help="Predict ecDNA status.")
+@scamp_app.command(name="predict", help="Predict ecDNA status with scRASCAL.")
 def predict_ecdna(
     output_dir: OutputDirArg,
     copy_numbers: Annotated[
@@ -329,12 +329,12 @@ def predict_ecdna(
     decision_rule: Annotated[
         float, typer.Option(help="NN likelihood decision rule.")
     ] = 0.5,
-    # min_copy_number: Annotated[
-    #     float, typer.Option(help="Minimum copy-number to consider.")
-    # ] = 2.0,
-    # max_percentile: Annotated[
-    #     float, typer.Option(help="Maximum percentile to cap copy-numbers.")
-    # ] = 99.0,
+    min_copy_number: Annotated[
+        float, typer.Option(help="Minimum copy-number to consider.")
+    ] = 2.0,
+    max_percentile: Annotated[
+        float, typer.Option(help="Maximum percentile to cap copy-numbers.")
+    ] = 99.0,
     filter_copy_number: Annotated[
         float,
         typer.Option(
@@ -348,7 +348,7 @@ def predict_ecdna(
         ),
     ] = None,
     predict_method: Annotated[
-        Literal["NN", "KNN", "GMM"],
+        Literal["SCAMP", "KNN", "GMM"],
         typer.Option(
             help="Method to use for predicting ecDNA. NN (old version), KNN, or GMM"
         ),
@@ -393,7 +393,7 @@ def predict_ecdna(
         int, typer.Option(help="Number of nearest neighbors for KNN.")
     ] = 100,
     cNMF_thresh: Annotated[
-        float, typer.Option(help="Threshold for choosing cNMF when using combo")
+        float, typer.Option(help="Threshold for choosing cNMF when using auto")
     ] = 0.55,
     error_w: Annotated[
         float,
@@ -457,27 +457,43 @@ def predict_ecdna(
 ) -> None:
 
     os.makedirs(output_dir, exist_ok=True)
+    out_log = []
 
-    out_log = predict.run_sample(
-        copy_numbers,
-        output_dir,
-        predictions,
+    counts_df = io.read_copy_numbers_file(copy_numbers)
+
+    # Detect extension
+    out_log.append(f"Running {copy_numbers}")
+    start = time.time()
+    filename = Path(copy_numbers).stem
+
+    
+    prediction_df, out_log = predict.predict(
+        counts_df,
+        out_log,
         model_file,
         whitelist_file,
-        decision_rule,
-        filter_copy_number,
-        predict_method,
-        one_thresh,
-        kneedle_coeff,
-        min_weight,
-        var_scale,
-        k,
+        decision_rule=decision_rule,
+        filter_copy_number=filter_copy_number,
+        predict_method=predict_method,
+        one_thresh=one_thresh,
+        kneedle_coeff=kneedle_coeff,
+        min_weight=min_weight,
+        var_scale=var_scale,
+        k=k,
+        verbose=False,
+    )
+
+    prediction_df, cell_by_ecDNA, out_log = predict.cluster(
+        filename,
+        prediction_df,
+        counts_df,
         deconvolution_method,
         hier_ddist,
         cNMF_thresh,
         error_w,
         score_cutoff,
         log_dir,
+        out_log,
         verbose,
         gmm_max_percentile=gmm_max_percentile,
         gmm_min_copy_number=gmm_min_copy_number,
@@ -494,6 +510,9 @@ def predict_ecdna(
         knn_min_var=knn_min_var,
     )
 
+    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)
+    cell_by_ecDNA.to_csv(f"{output_dir}/cell_by_ecDNA_{filename}.tsv", sep="\t", index=False)
+
     # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
     # if not no_plot:
     #     plotting.plot_scamp_predictions_plotly(
@@ -501,6 +520,9 @@ def predict_ecdna(
     #         f"{output_dir}/ecDNA_predictions.html",
     #         title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
     #     )
+
+    end = time.time()
+    out_log.append(f"File {copy_numbers} completed in {end - start:.2f} seconds")
 
     with open(f"{output_dir}/log.log", "w") as f:
         f.writelines(line + "\n" for line in out_log)
