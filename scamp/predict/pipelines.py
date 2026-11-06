@@ -30,6 +30,13 @@ def predict(
     var_scale=0.5,
     k=100,
     verbose=False,
+    min_copy_number=2.0,
+    max_percentile=99.9,
+    trim_before_gmm=False,
+    n_draws=1,
+    single_dist_scamp=False,
+    knn_min_mean=2.5,
+    knn_min_var=10,
 ):
     """Predicts ecDNA status for each gene from its copy-number distribution across cells.
 
@@ -55,6 +62,21 @@ def predict(
             Larger values reduce false positives (GMM and KNN).
         k: Number of nearest neighbors for KNN.
         verbose: Whether to log per-gene details.
+        min_copy_number: Minimum of a copy-number distribution before prediction:
+            copy-numbers at or below this are ignored when the model scores it.
+        max_percentile: Copy-numbers above this percentile are dropped when the
+            model scores a distribution.
+        trim_before_gmm: Whether to also apply `min_copy_number` and
+            `max_percentile` to the gene's cells before the GMM fit (GMM and KNN).
+        n_draws: Draws of 1,000 sampled cells per distribution; the call uses the
+            mean probability (GMM).
+        single_dist_scamp: If only one distribution has weight above `min_weight`,
+            score the gene's untrimmed cells as published scAmp does, with softmax
+            >= `decision_rule` (GMM and KNN).
+        knn_min_mean: A neighbourhood is scored only if its mean copy-number
+            exceeds this (-inf = no gate) (KNN).
+        knn_min_var: A neighbourhood is scored only if its copy-number variance
+            exceeds this (-inf = no gate) (KNN).
 
     Returns:
         A DataFrame with one row per gene that passed the filter. It has `gene`,
@@ -89,9 +111,17 @@ def predict(
                 new_row["gene"] = gene
                 result_rows.append(new_row)
             else:
-                if predict_method == "NN":
-                    prediction, proba = predict_methods.NN_ecDNA_predict(
-                        model, counts_df[gene], out_log, np.array([gene]), decision_rule, verbose
+                if predict_method == "SCAMP":
+                    prediction, proba = predict_methods.SCAMP_ecDNA_predict(
+                        model,
+                        counts_df[gene],
+                        out_log,
+                        np.array([gene]),
+                        decision_rule,
+                        verbose,
+                        min_copy_number=min_copy_number,
+                        max_percentile=max_percentile,
+                        filter_copy_number=filter_copy_number,
                     )
                     result_rows.append(
                         {"gene": gene, "Probability": proba, "prediction": prediction}
@@ -113,6 +143,12 @@ def predict(
                         var_scale=var_scale,
                         min_weight=min_weight,
                         verbose=verbose,
+                        min_copy_number=min_copy_number,
+                        max_percentile=max_percentile,
+                        filter_copy_number=filter_copy_number,
+                        trim_before_gmm=trim_before_gmm,
+                        n_draws=n_draws,
+                        single_dist_scamp=single_dist_scamp,
                     )
                     result_rows.append(
                         {
@@ -141,6 +177,14 @@ def predict(
                         var_scale=var_scale,
                         decision_rule=decision_rule,
                         verbose=verbose,
+                        min_copy_number=min_copy_number,
+                        max_percentile=max_percentile,
+                        filter_copy_number=filter_copy_number,
+                        trim_before_gmm=trim_before_gmm,
+                        min_weight=min_weight,
+                        knn_min_mean=knn_min_mean,
+                        knn_min_var=knn_min_var,
+                        single_dist_scamp=single_dist_scamp,
                     )
                     result_rows.append(
                         {
