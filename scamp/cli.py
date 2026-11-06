@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import scanpy as sc
 import typer
 
-from scamp import atac_cnv, io, plotting, predict, vis
+from scamp import atac_cnv, io, predict, vis
 from scamp.mixins.errors import CLIError
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
@@ -352,16 +352,10 @@ def predict_ecdna(
         float,
         typer.Option(help="Importance of error in deciding cNMF number of ecDNA species"),
     ] = 0.25,
-    score_cutoff: Annotated[
+    deconvolution_score_cutoff: Annotated[
         float,
         typer.Option(help="Cutoff for deciding a gene belongs to a species of ecDNA"),
     ] = 3,
-    score: Annotated[
-        Literal["ratio", "softmax"],
-        typer.Option(
-            help="GMM: model probability. ratio (scaup) or softmax (published scAmp; use with --decision-rule 0.6)."
-        ),
-    ] = "ratio",
     n_draws: Annotated[
         int,
         typer.Option(
@@ -372,9 +366,9 @@ def predict_ecdna(
         bool,
         typer.Option(
             "--single-dist-scamp",
-            help="GMM: if only one distribution has weight > --min-weight, score the gene's untrimmed cells as published scAmp (softmax >= --decision-rule).",
+            help="GMM: if only one distribution has weight > --min-weight, score the gene's untrimmed cells as published scAmp",
         ),
-    ] = False,
+    ] = True,
     knn_min_mean: Annotated[
         float,
         typer.Option(
@@ -400,7 +394,6 @@ def predict_ecdna(
     out_log.append(f"Min copy number (keep >): {min_copy_number}")
     out_log.append(f"Max percentile (keep <=): {max_percentile}")
     out_log.append(f"Also trim cells before the GMM fit: {trim_before_gmm}")
-    out_log.append(f"GMM score: {score}; draws per sampled distribution: {n_draws}")
     out_log.append(f"KNN gate: mean > {knn_min_mean} and var > {knn_min_var}")
     out_log.append(f"Single distribution -> scAmp scoring: {single_dist_scamp}")
 
@@ -428,7 +421,6 @@ def predict_ecdna(
         min_copy_number=min_copy_number,
         max_percentile=max_percentile,
         trim_before_gmm=trim_before_gmm,
-        score=score,
         n_draws=n_draws,
         single_dist_scamp=single_dist_scamp,
         knn_min_mean=knn_min_mean,
@@ -443,7 +435,7 @@ def predict_ecdna(
         hier_ddist,
         cNMF_thresh,
         error_w,
-        score_cutoff,
+        deconvolution_score_cutoff,
         log_dir,
         out_log,
         verbose,
