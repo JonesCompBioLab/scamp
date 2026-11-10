@@ -204,7 +204,6 @@ def _GMM_fit(
 
             bic_scaled = (bic_scores - (np.min(bic_scores))) / np.ptp(bic_scores)
             bic_scaled = bic_scaled**kneedle_coeff
-            # bic_scaled = np.log(np.array(bic_scores) - np.min(bic_scores) + 1e-8)
 
             kneedle = KneeLocator(ks, bic_scaled, curve="convex", direction="decreasing")
 

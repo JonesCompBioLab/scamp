@@ -390,12 +390,22 @@ def predict_ecdna(
         f"Settings\nModel path: {model_file}\nDecision rule: {decision_rule}\nPrediction method: {predict_method}\nDeconvolution method: {deconvolution_method}"
     ]
     out_log.append(f"Copy number filter: {filter_copy_number}")
-    out_log.append(f"One thresh: {one_thresh}")
     out_log.append(f"Min copy number (keep >): {min_copy_number}")
     out_log.append(f"Max percentile (keep <=): {max_percentile}")
-    out_log.append(f"Also trim cells before the GMM fit: {trim_before_gmm}")
-    out_log.append(f"KNN gate: mean > {knn_min_mean} and var > {knn_min_var}")
-    out_log.append(f"Single distribution -> scAmp scoring: {single_dist_scamp}")
+
+    if predict_method == "GMM":
+        out_log.append(f"GMM kneedle coefficient: {kneedle_coeff}")
+        out_log.append(f"GMM min weight: {min_weight}")
+        out_log.append(f"GMM var scale: {var_scale}")
+
+        out_log.append(f"Single distribution -> scAmp scoring: {single_dist_scamp}")
+        out_log.append(f"One thresh: {one_thresh}")
+        out_log.append(f"Also trim cells before the GMM fit: {trim_before_gmm}")
+
+    if predict_method == "KNN":
+        out_log.append(f"Number of neighbors (k): {k}")
+        out_log.append(f"KNN gate: mean > {knn_min_mean} and var > {knn_min_var}")
+
 
     counts_df = io.read_copy_numbers_file(copy_numbers)
 
