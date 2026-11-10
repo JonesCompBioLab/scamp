@@ -109,9 +109,20 @@ def cNMF_deconvolution(
     # Decrease all by 2, and make none less than zero
     cellbygene = cellbygene_df - 2
     cellbygene = cellbygene.clip(lower=0)
+
+    # cNMF raises "N cells have zero counts of overdispersed genes ... Quitting!" if any
+    # cell is all-zero here, i.e. has no copy-number above 2 at any ecDNA+ gene. Such
+    # cells are left out of the cNMF input and get 0 usage afterwards, so the output
+    # keeps all cells (ported from the old local fix U7).
+    nonzero = cellbygene.sum(axis=1) > 0
+    n_dropped = int((~nonzero).sum())
+    if n_dropped > 0 :
+        out_log.append(f"cNMF: left out {n_dropped} of {len(cellbygene)} cells with no copy-number "
+                       f"above 2 at any ecDNA+ gene; added back with 0 usage")
+
     # Export (needs to be an outputted csv otherwise we cannot)
     cellbygene_path = f"{log_dir}/cellbygene_minus_chromosomal.tsv"
-    cellbygene.to_csv(cellbygene_path, sep = '\t')
+    cellbygene[nonzero].to_csv(cellbygene_path, sep = '\t')
 
     if num_ecDNA is None :
         num_ecDNA = _cNMF_find_k(max_species, cellbygene_df, hier_ddist, log_dir, sample_name, cellbygene_path, n_iter, seed, error_w, out_log, verbose)
@@ -137,7 +148,12 @@ def cNMF_deconvolution(
         usage_df, spectra_scores, spectra_tpm, top_genes = cnmf_obj.load_results(K=num_ecDNA, density_threshold=density_threshold, norm_usage = False)
         
         rf_usages = pd.read_csv(f"{log_dir}/{sample_name}/{sample_name}.usages.k_{num_ecDNA}.dt_{str(density_threshold).replace('.', '_')}.consensus.txt", sep = '\t', index_col = 0)
-        
+
+        # Cells left out of cNMF have 0 usage; everything below uses all cells
+        assert list(rf_usages.index) == list(cellbygene.index[nonzero])
+        rf_usages = rf_usages.reindex(cellbygene.index, fill_value=0.0)
+        usage_df = usage_df.reindex(cellbygene.index, fill_value=0.0)
+
         Y = cellbygene.values
         unnormalized_spectra_scores = efficient_ols_all_cols(rf_usages.values, Y, normalize_y = False)
 
