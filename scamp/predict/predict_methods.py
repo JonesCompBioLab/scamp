@@ -127,9 +127,9 @@ def GMM_ecDNA_predict(
             genes,
             decision_rule,
             verbose,
-            min_copy_number=min_copy_number,
-            max_percentile=max_percentile,
-            filter_copy_number=filter_copy_number,
+            min_copy_number=2.0,
+            max_percentile=99.9,
+            filter_copy_number=2.5,
         )
         if verbose:
             out_log.append(
@@ -162,7 +162,8 @@ def GMM_ecDNA_predict(
                     .tolist()
                 )
                 _, component_probability = SCAMP_ecDNA_predict(
-                    model, samples, out_log, genes, decision_rule, verbose
+                    model, samples, out_log, genes, decision_rule, verbose,
+                    min_copy_number=-np.inf, max_percentile=100, filter_copy_number=-np.inf,
                 )
                 probabilities.append(component_probability)
             probability = float(np.mean(probabilities))
@@ -385,18 +386,18 @@ def KNN_ecDNA_predict(
     # mode): all of its untrimmed cells, softmax >= decision_rule.
     # NumberOfPositiveCells is then reported as -1 (no neighbourhoods scored).
     if single_dist_scamp and int((gmm.weights_ > min_weight).sum()) == 1:
-        prediction, _ = SCAMP_ecDNA_predict(
+        _, probability = SCAMP_ecDNA_predict(
             model,
             all_cells,
             out_log,
             genes,
             decision_rule,
             verbose,
-            min_copy_number=min_copy_number,
-            max_percentile=max_percentile,
-            filter_copy_number=filter_copy_number,
+            min_copy_number=2.0,
+            max_percentile=99.9,
+            filter_copy_number=2.5,
         )
-        return prediction, -1
+        return probability >= decision_rule, -1
 
     means = gmm.means_.flatten()
     variances = gmm.covariances_.flatten()
@@ -456,9 +457,11 @@ def KNN_ecDNA_predict(
 
         # Gate: Kevin set mean > 2.5 and var > 10 to save runtime (P8: configurable; -inf = off)
         if np.mean(subset) > knn_min_mean and np.var(subset) > knn_min_var:
-            prediction, _ = SCAMP_ecDNA_predict(
-                model, subset.tolist(), out_log, genes, decision_rule, verbose
+            _, probability = SCAMP_ecDNA_predict(
+                model, subset.tolist(), out_log, genes, decision_rule, verbose,
+                min_copy_number=-np.inf, max_percentile=100, filter_copy_number=-np.inf,
             )
+            prediction = probability >= decision_rule
             if verbose:
                 out_log.append(f"{genes[0]} ecDNA:")
             out.append(prediction)

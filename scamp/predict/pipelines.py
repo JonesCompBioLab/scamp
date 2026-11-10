@@ -270,7 +270,7 @@ def cluster(
 
     # If no genes are ecDNA positive, just return
     if len(ecDNA_genes) == 0:
-        return predict_df, pd.DataFrame(index=counts_df.index)
+        return predict_df, pd.DataFrame(index=counts_df.index), out_log
 
     counts_df_ecDNA = counts_df[ecDNA_genes]
 

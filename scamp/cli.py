@@ -297,12 +297,12 @@ def predict_ecdna(
     min_copy_number: Annotated[
         float,
         typer.Option(
-            help="Minimum of a copy-number distribution before prediction: copy-numbers at or below this are ignored."
+            help="With --trim-before-gmm: keep only cells with copy-number above this for the GMM fit."
         ),
     ] = 2.0,
     max_percentile: Annotated[
         float,
-        typer.Option(help="Drop copy-numbers above this percentile before prediction."),
+        typer.Option(help="With --trim-before-gmm: drop cells above this percentile before the GMM fit."),
     ] = 99.9,
     filter_copy_number: Annotated[
         float,
@@ -311,7 +311,7 @@ def predict_ecdna(
     trim_before_gmm: Annotated[
         bool,
         typer.Option(
-            help="GMM and KNN: also apply --min-copy-number and --max-percentile to the gene's cells before fitting the GMM."
+            help="GMM and KNN: trim the gene's cells with --min-copy-number and --max-percentile before fitting the GMM."
         ),
     ] = False,
     predict_method: Annotated[
