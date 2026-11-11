@@ -291,7 +291,7 @@ def predict_ecdna(
         Path(__file__).resolve().parent / "pretrained_models" / "scamp_model_1.0"
     ),
     whitelist_file: WhitelistFileArg = None,
-    log_dir: Annotated[str, typer.Argument(help="cNMF log dir")] = "./temp",
+    cNMF_log_dir: Annotated[str, typer.Option(help="cNMF log dir")] = "./temp",
     verbose: Annotated[bool, typer.Option("--verbose", help="Enable verbose output")] = False,
     decision_rule: Annotated[float, typer.Option(help="NN likelihood decision rule.")] = 0.5,
     min_copy_number: Annotated[
@@ -308,10 +308,10 @@ def predict_ecdna(
         float,
         typer.Option(help="Drop genes whose mean copy-number is below this threshold."),
     ] = 2.5,
-    trim_before_gmm: Annotated[
+    no_trim_before_gmm: Annotated[
         bool,
         typer.Option(
-            help="GMM and KNN: trim the gene's cells with --min-copy-number and --max-percentile before fitting the GMM."
+            help="GMM and KNN: do not trim the gene's cells with --min-copy-number and --max-percentile before fitting the GMM."
         ),
     ] = False,
     predict_method: Annotated[
@@ -356,19 +356,39 @@ def predict_ecdna(
         float,
         typer.Option(help="Cutoff for deciding a gene belongs to a species of ecDNA"),
     ] = 3,
+    cNMF_num_iter: Annotated[
+        int,
+        typer.Option(help="Number of iterations for cNMF."),
+    ] = 50,
+    ecDNA_remove_cutoff: Annotated[
+        float,
+        typer.Option(help="Remove ecDNA whose highest cNMF spectra is below this value"),
+    ] = 0.01,
+    cNMF_density_threshold: Annotated[
+        float,
+        typer.Option(help="Density threshold for the cNMF consensus"),
+    ] = 0.1,
+    max_species: Annotated[
+        int,
+        typer.Option(help="Maximum number of ecDNA species to consider for cNMF"),
+    ] = None,
+    num_species: Annotated[
+        int,
+        typer.Option(help="Number of ecDNA species to consider for deconvolution"),
+    ] = None,
     n_draws: Annotated[
         int,
         typer.Option(
             help="GMM: draws of 1,000 sampled cells per distribution; the call uses the mean probability."
         ),
     ] = 1,
-    single_dist_scamp: Annotated[
+    no_single_dist_scamp: Annotated[
         bool,
         typer.Option(
-            "--single-dist-scamp",
-            help="GMM: if only one distribution has weight > --min-weight, score the gene's untrimmed cells as published scAmp",
+            "--no-single-dist-scamp",
+            help="GMM: if only one distribution has weight > --min-weight, do not score the gene with published scAmp parameters",
         ),
-    ] = True,
+    ] = False,
     knn_min_mean: Annotated[
         float,
         typer.Option(
@@ -381,6 +401,12 @@ def predict_ecdna(
             help="KNN gate: score a neighbourhood only if its variance exceeds this. -inf = off."
         ),
     ] = 10,
+    seed: Annotated[
+        int,
+        typer.Option(
+            help="Random seed for reproducibility. If not specified, uses a random seed."
+        ),
+    ] = None,
 ) -> None:
 
     os.makedirs(output_dir, exist_ok=True)
@@ -398,9 +424,9 @@ def predict_ecdna(
         out_log.append(f"GMM min weight: {min_weight}")
         out_log.append(f"GMM var scale: {var_scale}")
 
-        out_log.append(f"Single distribution -> scAmp scoring: {single_dist_scamp}")
+        out_log.append(f"Single distribution -> scAmp scoring: {not no_single_dist_scamp}")
         out_log.append(f"One thresh: {one_thresh}")
-        out_log.append(f"Also trim cells before the GMM fit: {trim_before_gmm}")
+        out_log.append(f"Also trim cells before the GMM fit: {not no_trim_before_gmm}")
 
     if predict_method == "KNN":
         out_log.append(f"Number of neighbors (k): {k}")
@@ -430,9 +456,9 @@ def predict_ecdna(
         verbose=False,
         min_copy_number=min_copy_number,
         max_percentile=max_percentile,
-        trim_before_gmm=trim_before_gmm,
+        trim_before_gmm= (not no_trim_before_gmm),
         n_draws=n_draws,
-        single_dist_scamp=single_dist_scamp,
+        single_dist_scamp=(not no_single_dist_scamp),
         knn_min_mean=knn_min_mean,
         knn_min_var=knn_min_var,
     )
@@ -444,11 +470,17 @@ def predict_ecdna(
         deconvolution_method,
         hier_ddist,
         cNMF_thresh,
+        cNMF_num_iter,
         error_w,
         deconvolution_score_cutoff,
-        log_dir,
+        ecDNA_remove_cutoff,
+        cNMF_density_threshold,
+        max_species,
+        num_species,
+        cNMF_log_dir,
         out_log,
         verbose,
+        seed
     )
 
     prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)

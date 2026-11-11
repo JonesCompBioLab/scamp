@@ -18,16 +18,29 @@ def _vector_seed(input):
     return int.from_bytes(digest[:8], "little")
 
 
-def _trim_cells(input, max_percentile=100.0, min_copy_number=None):
-    """Keeps the cells at or below `max_percentile` of the copy-numbers and strictly
-    above `min_copy_number` (None = no minimum). Both are applied to all of the
-    gene's cells. Returns a 1-D array.
+def _trim_cells(input, max_percentile=100.0, min_copy_number=None, filter_copy_number=None):
+    """Trims a gene's cells before the GMM fit.
+
+    Args:
+        input: Copy-numbers of one gene across cells.
+        max_percentile: Keep cells at or below this percentile of the copy-numbers.
+        min_copy_number: Keep cells with copy-number strictly above this (None = no
+            minimum).
+        filter_copy_number: Return None if the mean copy-number of the kept cells is
+            below this (None = no filter).
+
+    Returns:
+        A 1-D array of the kept cells, or None if their mean is below
+        `filter_copy_number`.
     """
     x = np.asarray(input, dtype=np.float64).ravel()
     keep = x <= np.percentile(x, max_percentile)
     if min_copy_number is not None:
         keep &= x > min_copy_number
-    return x[keep]
+    x = x[keep]
+    if filter_copy_number is not None and len(x) > 0 and np.mean(x) < filter_copy_number:
+        return None
+    return x
 
 
 def GMM_ecDNA_predict(
@@ -46,7 +59,7 @@ def GMM_ecDNA_predict(
     min_copy_number=2.0,
     max_percentile=99.9,
     filter_copy_number=2.5,
-    trim_before_gmm=False,
+    trim_before_gmm=True,
     n_draws=1,
     single_dist_scamp=False,
 ):
@@ -82,11 +95,12 @@ def GMM_ecDNA_predict(
         filter_copy_number: A distribution whose mean copy-number is below this is
             not scored.
         trim_before_gmm: Whether to also apply `min_copy_number` and
-            `max_percentile` to the gene's cells before the GMM fit.
+            `max_percentile` to the gene's cells before the GMM fit. The gene is
+            then not called if the kept cells' mean is below `filter_copy_number`.
         n_draws: Draws of 1000 sampled cells per distribution; the call uses the
             mean probability.
         single_dist_scamp: If only one distribution has weight above `min_weight`,
-            score the gene's untrimmed cells with softmax, as published scAmp does.
+            score the gene's untrimmed cells using default scAmp parameters.
 
     Returns:
         A tuple `(prediction, probability, mean, var, weight)`: the predicted ecDNA
@@ -103,7 +117,14 @@ def GMM_ecDNA_predict(
 
     # Optional trimming of the real cells before the GMM fit
     if trim_before_gmm:
-        input = _trim_cells(input, max_percentile, min_copy_number).reshape(-1, 1)
+        input = _trim_cells(input, max_percentile, min_copy_number, filter_copy_number)
+        if input is None:
+            out_log.append(
+                f"{genes[0]}: mean copy-number after GMM trimming is below "
+                f"{filter_copy_number}, not called"
+            )
+            return False, 0.0, -1, -1, -1
+        input = input.reshape(-1, 1)
         # Too few cells left to fit up to max_components - 1 distributions
         if len(input) < max_components:
             out_log.append(
@@ -290,7 +311,7 @@ def KNN_ecDNA_predict(
     min_copy_number=2.0,
     max_percentile=99.9,
     filter_copy_number=2.5,
-    trim_before_gmm=False,
+    trim_before_gmm=True,
     min_weight=0.005,
     knn_min_mean=2.5,
     knn_min_var=10,
@@ -331,7 +352,8 @@ def KNN_ecDNA_predict(
             not scored.
         trim_before_gmm: Whether to also apply `min_copy_number` and
             `max_percentile` to the gene's cells first. The trimmed cells are used
-            for the GMM fit, the subsample and the neighborhoods.
+            for the GMM fit, the subsample and the neighborhoods. The gene is not
+            called if their mean is below `filter_copy_number`.
         min_weight: Distributions with less weight than this count as absent for
             `single_dist_scamp`.
         knn_min_mean: A neighborhood is scored only if its mean copy-number
@@ -339,7 +361,7 @@ def KNN_ecDNA_predict(
         knn_min_var: A neighborhood is scored only if its copy-number variance
             exceeds this (-inf = no gate).
         single_dist_scamp: If only one distribution has weight above `min_weight`,
-            score the gene's untrimmed cells with softmax, as published scAmp does.
+            score the gene's untrimmed cells using default scAmp parameters
 
     Returns:
         A tuple `(prediction, num_positive_cells)`: the predicted ecDNA status, and
@@ -352,7 +374,13 @@ def KNN_ecDNA_predict(
 
     # Optional trimming of the real cells, before the subsample and the GMM fit
     if trim_before_gmm:
-        input = _trim_cells(input, max_percentile, min_copy_number)
+        input = _trim_cells(input, max_percentile, min_copy_number, filter_copy_number)
+        if input is None:
+            out_log.append(
+                f"{genes[0]}: mean copy-number after GMM trimming is below "
+                f"{filter_copy_number}, not called"
+            )
+            return False, 0
         # Too few cells left to fit up to max_components - 1 distributions
         if len(input) < max_components:
             out_log.append(
@@ -381,7 +409,7 @@ def KNN_ecDNA_predict(
     )
     x = np.array(arr).reshape(-1)
 
-    # Only one distribution passes min_weight: score the gene as published scAmp does (P8, as in GMM
+    # Only one distribution passes min_weight: score the gene as published scAmp does (as in GMM
     # mode): all of its untrimmed cells, softmax >= decision_rule.
     # NumberOfPositiveCells is then reported as -1 (no neighbourhoods scored).
     if single_dist_scamp and int((gmm.weights_ > min_weight).sum()) == 1:
@@ -454,7 +482,7 @@ def KNN_ecDNA_predict(
         mean_diff = np.mean(subset) - label_means[target_label]
         subset = subset - mean_diff
 
-        # Gate: Kevin set mean > 2.5 and var > 10 to save runtime (P8: configurable; -inf = off)
+        # Gate: mean > 2.5 and var > 10 to save runtime
         if np.mean(subset) > knn_min_mean and np.var(subset) > knn_min_var:
             _, probability = SCAMP_ecDNA_predict(
                 model, subset.tolist(), out_log, genes, decision_rule, verbose,

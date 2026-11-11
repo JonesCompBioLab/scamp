@@ -228,11 +228,17 @@ def cluster(
     deconvolution_method,
     hier_ddist,
     cNMF_thresh,
+    cNMF_num_iter,
     error_w,
     score_cutoff,
-    log_dir,
+    ecDNA_remove_cutoff,
+    density_threshold,
+    max_species,
+    num_ecDNA,
+    cNMF_log_dir,
     out_log,
     verbose,
+    seed,
 ):
     """Groups the ecDNA-positive genes into ecDNA species.
 
@@ -250,7 +256,7 @@ def cluster(
         cNMF_thresh: Threshold for choosing cNMF when the method is "auto".
         error_w: Weight of reconstruction error when choosing the number of cNMF species.
         score_cutoff: Score above which a gene is assigned to a species.
-        log_dir: Directory for cNMF intermediate files.
+        cNMF_log_dir: Directory for cNMF intermediate files.
         out_log: List of log lines; progress messages are appended to it.
         verbose: Whether to log details of the deconvolution.
 
@@ -286,7 +292,10 @@ def cluster(
         cell_by_ecDNA.columns = ["pred_ecDNA_1"]
     elif deconvolution_method == "hier":
         species_to_gene, cell_by_ecDNA = species_deconvolution.hierarchical_deconvolution(
-            df_unique, hier_ddist
+            df_unique,
+            hier_ddist=hier_ddist,
+            max_species=max_species,
+            num_ecDNA=num_ecDNA,
         )
     elif deconvolution_method == "auto":
         species_to_gene, cell_by_ecDNA = species_deconvolution.hybrid_deconvolution(
@@ -294,21 +303,34 @@ def cluster(
             out_log,
             cNMF_thresh,
             filename,
+            max_species=max_species,
+            n_iter=cNMF_num_iter,
             error_w=error_w,
             score_cutoff=score_cutoff,
-            log_dir=log_dir,
+            ecDNA_remove_cutoff=ecDNA_remove_cutoff,
+            log_dir=cNMF_log_dir,
+            density_threshold=density_threshold,
             hier_ddist=hier_ddist,
+            num_ecDNA=num_ecDNA,
             verbose=verbose,
+            seed=seed,
         )
+
     elif deconvolution_method == "cNMF":
         species_to_gene, cell_by_ecDNA = species_deconvolution.cNMF_deconvolution(
             df_unique,
             filename,
             out_log,
+            n_iter=cNMF_num_iter,
             error_w=error_w,
             score_cutoff=score_cutoff,
-            log_dir=log_dir,
+            ecDNA_remove_cutoff=ecDNA_remove_cutoff,
+            log_dir=cNMF_log_dir,
+            density_threshold=density_threshold,
             hier_ddist=hier_ddist,
+            max_species=max_species,
+            num_ecDNA=num_ecDNA,
+            seed=seed,
             verbose=verbose,
         )
     else:
