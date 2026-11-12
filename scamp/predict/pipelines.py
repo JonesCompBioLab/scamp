@@ -7,12 +7,9 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-import os
 import numpy as np
 import pandas as pd
 import scanpy as sc
-import time
-from pathlib import Path
 
 from scamp import io
 from scamp import models
@@ -20,8 +17,8 @@ from scamp.predict import predict_methods, species_deconvolution
 
 
 def predict(
-    out_log,
     counts_df,
+    out_log,
     saved_model_directory,
     whitelist_file,
     decision_rule,
@@ -33,6 +30,13 @@ def predict(
     var_scale=0.5,
     k=100,
     verbose=False,
+    min_copy_number=2.0,
+    max_percentile=99.9,
+    trim_before_gmm=False,
+    n_draws=1,
+    single_dist_scamp=False,
+    knn_min_mean=2.5,
+    knn_min_var=10,
 ):
     """Predicts ecDNA status for each gene from its copy-number distribution across cells.
 
@@ -48,7 +52,7 @@ def predict(
             listed cells are kept. If None, all cells are used.
         decision_rule: SCAMP likelihood threshold for calling a gene ecDNA-positive.
         filter_copy_number: Drop genes whose mean copy-number is below this.
-        predict_method: One of "NN", "GMM" or "KNN".
+        predict_method: One of "SCAMP", "GMM" or "KNN".
         one_thresh: Threshold for choosing a single distribution in the GMM fit
             (GMM and KNN).
         kneedle_coeff: Higher values make kneedle pick fewer GMM distributions
@@ -58,6 +62,21 @@ def predict(
             Larger values reduce false positives (GMM and KNN).
         k: Number of nearest neighbors for KNN.
         verbose: Whether to log per-gene details.
+        min_copy_number: Minimum of a copy-number distribution before prediction:
+            copy-numbers at or below this are ignored when the model scores it.
+        max_percentile: Copy-numbers above this percentile are dropped when the
+            model scores a distribution.
+        trim_before_gmm: Whether to also apply `min_copy_number` and
+            `max_percentile` to the gene's cells before the GMM fit (GMM and KNN).
+        n_draws: Draws of 1,000 sampled cells per distribution; the call uses the
+            mean probability (GMM).
+        single_dist_scamp: If only one distribution has weight above `min_weight`,
+            score the gene's untrimmed cells as published scAmp does, with softmax
+            >= `decision_rule` (GMM and KNN).
+        knn_min_mean: A neighbourhood is scored only if its mean copy-number
+            exceeds this (-inf = no gate) (KNN).
+        knn_min_var: A neighbourhood is scored only if its copy-number variance
+            exceeds this (-inf = no gate) (KNN).
 
     Returns:
         A DataFrame with one row per gene that passed the filter. It has `gene`,
@@ -92,9 +111,17 @@ def predict(
                 new_row["gene"] = gene
                 result_rows.append(new_row)
             else:
-                if predict_method == "NN":
-                    prediction, proba = predict_methods.NN_ecDNA_predict(
-                        model, counts_df[gene], out_log, np.array([gene]), decision_rule, verbose
+                if predict_method == "SCAMP":
+                    prediction, proba = predict_methods.SCAMP_ecDNA_predict(
+                        model,
+                        counts_df[gene],
+                        out_log,
+                        np.array([gene]),
+                        decision_rule,
+                        verbose,
+                        min_copy_number=min_copy_number,
+                        max_percentile=max_percentile,
+                        filter_copy_number=filter_copy_number,
                     )
                     result_rows.append(
                         {"gene": gene, "Probability": proba, "prediction": prediction}
@@ -116,6 +143,12 @@ def predict(
                         var_scale=var_scale,
                         min_weight=min_weight,
                         verbose=verbose,
+                        min_copy_number=min_copy_number,
+                        max_percentile=max_percentile,
+                        filter_copy_number=filter_copy_number,
+                        trim_before_gmm=trim_before_gmm,
+                        n_draws=n_draws,
+                        single_dist_scamp=single_dist_scamp,
                     )
                     result_rows.append(
                         {
@@ -144,6 +177,14 @@ def predict(
                         var_scale=var_scale,
                         decision_rule=decision_rule,
                         verbose=verbose,
+                        min_copy_number=min_copy_number,
+                        max_percentile=max_percentile,
+                        filter_copy_number=filter_copy_number,
+                        trim_before_gmm=trim_before_gmm,
+                        min_weight=min_weight,
+                        knn_min_mean=knn_min_mean,
+                        knn_min_var=knn_min_var,
+                        single_dist_scamp=single_dist_scamp,
                     )
                     result_rows.append(
                         {
@@ -177,7 +218,7 @@ def predict(
     prediction_df.insert(1, "mean", gene_counts.mean().to_numpy())
     prediction_df.insert(2, "var", gene_counts.var(ddof=0).to_numpy())
 
-    return prediction_df
+    return prediction_df, out_log
 
 
 def cluster(
@@ -187,11 +228,17 @@ def cluster(
     deconvolution_method,
     hier_ddist,
     cNMF_thresh,
+    cNMF_num_iter,
     error_w,
     score_cutoff,
-    log_dir,
+    ecDNA_remove_cutoff,
+    density_threshold,
+    max_species,
+    num_ecDNA,
+    cNMF_log_dir,
     out_log,
     verbose,
+    seed,
 ):
     """Groups the ecDNA-positive genes into ecDNA species.
 
@@ -209,7 +256,7 @@ def cluster(
         cNMF_thresh: Threshold for choosing cNMF when the method is "auto".
         error_w: Weight of reconstruction error when choosing the number of cNMF species.
         score_cutoff: Score above which a gene is assigned to a species.
-        log_dir: Directory for cNMF intermediate files.
+        cNMF_log_dir: Directory for cNMF intermediate files.
         out_log: List of log lines; progress messages are appended to it.
         verbose: Whether to log details of the deconvolution.
 
@@ -229,7 +276,7 @@ def cluster(
 
     # If no genes are ecDNA positive, just return
     if len(ecDNA_genes) == 0:
-        return predict_df, pd.DataFrame(index=counts_df.index)
+        return predict_df, pd.DataFrame(index=counts_df.index), out_log
 
     counts_df_ecDNA = counts_df[ecDNA_genes]
 
@@ -238,36 +285,52 @@ def cluster(
 
     # One distinct copy-number profile is one species. The methods below need at least two
     # profiles to compare (np.corrcoef of a single column is a scalar), so assign it directly;
-    # this is the usage hier_deconvolution and _hier_nnls give for a single profile.
+    # this is the usage hierarchical_deconvolution and _hier_nnls give for a single profile.
     if df_unique.shape[1] == 1:
         species_to_gene = {"pred_ecDNA_1": list(df_unique.columns)}
         cell_by_ecDNA = (df_unique - 2).clip(lower=0)
         cell_by_ecDNA.columns = ["pred_ecDNA_1"]
     elif deconvolution_method == "hier":
-        species_to_gene, cell_by_ecDNA = species_deconvolution.hier_deconvolution(
-            df_unique, hier_ddist
+        species_to_gene, cell_by_ecDNA = species_deconvolution.hierarchical_deconvolution(
+            df_unique,
+            hier_ddist=hier_ddist,
+            max_species=max_species,
+            num_ecDNA=num_ecDNA,
         )
     elif deconvolution_method == "auto":
-        species_to_gene, cell_by_ecDNA = species_deconvolution.combo_deconvolution(
+        species_to_gene, cell_by_ecDNA = species_deconvolution.hybrid_deconvolution(
             df_unique,
             out_log,
             cNMF_thresh,
             filename,
+            max_species=max_species,
+            n_iter=cNMF_num_iter,
             error_w=error_w,
             score_cutoff=score_cutoff,
-            log_dir=log_dir,
+            ecDNA_remove_cutoff=ecDNA_remove_cutoff,
+            log_dir=cNMF_log_dir,
+            density_threshold=density_threshold,
             hier_ddist=hier_ddist,
+            num_ecDNA=num_ecDNA,
             verbose=verbose,
+            seed=seed,
         )
+
     elif deconvolution_method == "cNMF":
         species_to_gene, cell_by_ecDNA = species_deconvolution.cNMF_deconvolution(
             df_unique,
             filename,
             out_log,
+            n_iter=cNMF_num_iter,
             error_w=error_w,
             score_cutoff=score_cutoff,
-            log_dir=log_dir,
+            ecDNA_remove_cutoff=ecDNA_remove_cutoff,
+            log_dir=cNMF_log_dir,
+            density_threshold=density_threshold,
             hier_ddist=hier_ddist,
+            max_species=max_species,
+            num_ecDNA=num_ecDNA,
+            seed=seed,
             verbose=verbose,
         )
     else:
@@ -288,150 +351,4 @@ def cluster(
                     predict_df.loc[mask, "Species"] = str(species)
                 else:
                     predict_df.loc[mask, "Species"] = current + "," + str(species)
-    return predict_df, cell_by_ecDNA
-
-
-# Can skip the first step by providing a predictions path (otherwise set it to none)
-def run_sample(
-    file,
-    output_dir,
-    predictions,
-    model_file,
-    whitelist_file,
-    decision_rule,
-    filter_copy_number,
-    predict_method,
-    one_thresh,
-    kneedle_coeff,
-    min_weight,
-    var_scale,
-    k,
-    deconvolution_method,
-    hier_ddist,
-    cNMF_thresh,
-    error_w,
-    score_cutoff,
-    log_dir,
-    verbose,
-):
-    """Runs prediction and species deconvolution on one copy-number file.
-
-    Writes `ecDNA_preds_<name>.tsv` and `cell_by_ecDNA_<name>.tsv` to `output_dir`,
-    where `<name>` is the input file's stem. The predictions file is also written
-    before deconvolution, so it is kept if deconvolution fails.
-
-    Args:
-        file: Path to a .h5ad, .csv or .tsv file, or a MEX directory (containing
-            matrix.mtx* and barcodes.tsv*). Any other input is skipped and noted
-            in the log.
-        output_dir: Directory where the output TSVs are written.
-        predictions: Path to an existing predictions TSV. If given, prediction is
-            skipped and only deconvolution runs. Use None to predict.
-        model_file: Path to a saved SCAMP model.
-        whitelist_file: Headerless file with one cell barcode per line. Only the
-            listed cells are kept. If None, all cells are used.
-        decision_rule: SCAMP likelihood threshold for calling a gene ecDNA-positive.
-        filter_copy_number: Drop genes whose mean copy-number is below this.
-        predict_method: One of "NN", "GMM" or "KNN".
-        one_thresh: Threshold for choosing a single distribution in the GMM fit
-            (GMM and KNN).
-        kneedle_coeff: Higher values make kneedle pick fewer GMM distributions
-            (GMM and KNN).
-        min_weight: GMM distributions with less weight than this are ignored (GMM).
-        var_scale: Distribution variances are scaled as var * weight ** var_scale.
-            Larger values reduce false positives (GMM and KNN).
-        k: Number of nearest neighbors for KNN.
-        deconvolution_method: One of "hier", "cNMF" or "auto" ("auto" chooses
-            between the two).
-        hier_ddist: Distance for null nodes in hierarchical clustering.
-        cNMF_thresh: Threshold for choosing cNMF when the method is "auto".
-        error_w: Weight of reconstruction error when choosing the number of cNMF species.
-        score_cutoff: Score above which a gene is assigned to a species.
-        log_dir: Directory for cNMF intermediate files.
-        verbose: Whether to log extra details.
-
-    Returns:
-        The list of log lines for this run.
-    """
-    out_log = [
-        f"Settings\nModel path: {model_file}\nDecision rule: {decision_rule}\nPrediction method: {predict_method}\nDeconvolution method: {deconvolution_method}"
-    ]
-    out_log.append(f"Copy number filter: {filter_copy_number}")
-
-    # Detect extension
-    out_log.append(f"Running {file}")
-    p = Path(file)
-    if os.path.isdir(p):
-        has_matrix = any(p.glob("matrix.mtx*"))
-        has_barcodes = any(p.glob("barcodes.tsv*"))
-        if has_matrix and has_barcodes:
-            mode = "MEX"
-        else:
-            out_log.append(f"{file} is non-MEX folder, skipping")
-            return out_log
-
-    else:
-        copy_numbers_ext = file.split(".")[-1]
-        if copy_numbers_ext == "h5ad":
-            mode = "anndata"
-        elif copy_numbers_ext == "csv" or copy_numbers_ext == "tsv":
-            mode = "copynumber"
-        else:
-            out_log.append(f"{file} does not have extension h5ad, tsv, or csv. Skipping")
-            return out_log
-
-    out_log.append(f"Running {file}")
-    start = time.time()
-    # Call different wrapper for each prediction type
-    if mode == "copynumber":
-        counts_df = io.read_copy_numbers_file(file)
-    elif mode == "MEX":
-        counts_df = io.read_mex_file(file)
-    else:
-        counts_df = io.read_anndata_file(file)
-
-    # Allow cutting in the middle of pipeline with old predictions file
-    if predictions is None:
-        prediction_df = predict(
-            out_log,
-            counts_df,
-            model_file,
-            whitelist_file,
-            decision_rule,
-            filter_copy_number,
-            predict_method,
-            one_thresh,
-            kneedle_coeff,
-            min_weight,
-            var_scale,
-            k,
-            verbose,
-        )
-    else:
-        prediction_df = pd.read_csv(predictions, sep="\t")
-
-    # Output early in case something breaks
-    filename = Path(file).stem
-    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)
-
-    prediction_df, cell_by_eCDNA = cluster(
-        filename,
-        prediction_df,
-        counts_df,
-        deconvolution_method,
-        hier_ddist,
-        cNMF_thresh,
-        error_w,
-        score_cutoff,
-        log_dir,
-        out_log,
-        verbose,
-    )
-
-    # Output predictions and visualizations
-    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)
-    cell_by_eCDNA.to_csv(f"{output_dir}/cell_by_ecDNA_{filename}.tsv", sep="\t", index=False)
-
-    end = time.time()
-    out_log.append(f"File {file} completed in {end - start:.2f} seconds")
-    return out_log
+    return predict_df, cell_by_ecDNA, out_log
