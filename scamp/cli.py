@@ -345,7 +345,7 @@ def predict_ecdna(
         typer.Option(help="Scaled GMM parameter. Greater value decreases false positives."),
     ] = 0.5,
     k: Annotated[int, typer.Option(help="Number of nearest neighbors for KNN.")] = 100,
-    cNMF_thresh: Annotated[
+    overlap_thresh: Annotated[
         float, typer.Option(help="Threshold for choosing cNMF when using auto")
     ] = 0.55,
     error_w: Annotated[
@@ -469,7 +469,7 @@ def predict_ecdna(
         counts_df,
         deconvolution_method,
         hier_ddist,
-        cNMF_thresh,
+        overlap_thresh,
         cNMF_num_iter,
         error_w,
         deconvolution_score_cutoff,

@@ -381,7 +381,7 @@ def hierarchical_deconvolution(cellbygene_df, hier_ddist=1.3, max_species=None, 
 def hybrid_deconvolution(
     cellbygene_df,
     out_log,
-    cNMF_thresh=0.55,
+    overlap_thresh=0.55,
     sample_name="cNMF_sample",
     max_species=None,
     n_iter=50,
@@ -406,7 +406,7 @@ def hybrid_deconvolution(
         cellbygene_df: Cell-by-gene copy-number DataFrame, still including the
             chromosomal baseline of 2.
         out_log: List of log lines; messages are appended to it.
-        cNMF_thresh: Each cluster's mean profile is fit as a combination of the
+        overlap_thresh: Each cluster's mean profile is fit as a combination of the
             others. Overlap is detected, and cNMF used, when the three lowest fit
             errors are all below this. Needs at least 3 clusters.
         sample_name: Name for the cNMF run and its log folder.
@@ -446,7 +446,7 @@ def hybrid_deconvolution(
     clusters = fcluster(Z, t=hier_num_ecDNA, criterion="maxclust")
 
     # Continue with hierarchical
-    if not _check_overlap(X, clusters, cNMF_thresh):
+    if not _check_overlap(X, clusters, overlap_thresh):
         return _hier_nnls(
             cellbygene_df, ddist=hier_ddist, max_species=max_species, num_ecDNA=hier_num_ecDNA
         )
@@ -839,7 +839,7 @@ def _hier_get_k(X, max_species, ddist, leeway=0):
 
 
 # Check if there are overlaps and we should use cNMF rather than hierarchical in hybrid
-def _check_overlap(X, clusters, cNMF_thresh, iters=20):
+def _check_overlap(X, clusters, overlap_thresh, iters=20):
     X = X - 2
     cluster_no = len(set(clusters))
 
@@ -902,4 +902,4 @@ def _check_overlap(X, clusters, cNMF_thresh, iters=20):
 
     lowest_three = heapq.nsmallest(3, errors)
 
-    return all(x < cNMF_thresh for x in lowest_three)
+    return all(x < overlap_thresh for x in lowest_three)

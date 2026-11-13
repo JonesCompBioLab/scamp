@@ -227,7 +227,7 @@ def cluster(
     counts_df,
     deconvolution_method,
     hier_ddist,
-    cNMF_thresh,
+    overlap_thresh,
     cNMF_num_iter,
     error_w,
     score_cutoff,
@@ -253,7 +253,7 @@ def cluster(
         deconvolution_method: One of "hier", "cNMF" or "auto" ("auto" chooses
             between the two).
         hier_ddist: Distance for null nodes in hierarchical clustering.
-        cNMF_thresh: Threshold for choosing cNMF when the method is "auto".
+        overlap_thresh: Threshold for choosing cNMF when the method is "auto".
         error_w: Weight of reconstruction error when choosing the number of cNMF species.
         score_cutoff: Score above which a gene is assigned to a species.
         cNMF_log_dir: Directory for cNMF intermediate files.
@@ -301,7 +301,7 @@ def cluster(
         species_to_gene, cell_by_ecDNA = species_deconvolution.hybrid_deconvolution(
             df_unique,
             out_log,
-            cNMF_thresh,
+            overlap_thresh,
             filename,
             max_species=max_species,
             n_iter=cNMF_num_iter,
