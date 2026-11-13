@@ -484,7 +484,8 @@ def predict_ecdna(
     )
 
     prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)
-    cell_by_ecDNA.to_csv(f"{output_dir}/cell_by_ecDNA_{filename}.tsv", sep="\t", index=False)
+    # Keep the cell barcodes as the first column, as in the input copy-number file
+    cell_by_ecDNA.to_csv(f"{output_dir}/cell_by_ecDNA_{filename}.tsv", sep="\t")
 
     # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
     # if not no_plot:
