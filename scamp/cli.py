@@ -292,17 +292,26 @@ def predict_ecdna(
     ),
     whitelist_file: WhitelistFileArg = None,
     cNMF_log_dir: Annotated[str, typer.Option(help="cNMF log dir")] = "./temp",
-    verbose: Annotated[bool, typer.Option("--verbose", help="Enable verbose output")] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose", help="Write more detail about the species deconvolution to log.log."
+        ),
+    ] = False,
     decision_rule: Annotated[float, typer.Option(help="NN likelihood decision rule.")] = 0.5,
     min_copy_number: Annotated[
         float,
         typer.Option(
-            help="With --trim-before-gmm: keep only cells with copy-number above this for the GMM fit."
+            help="Cells with copy number at or below this are left out. SCAMP: when the model "
+            "scores the gene. GMM and KNN: before the GMM fit."
         ),
     ] = 2.0,
     max_percentile: Annotated[
         float,
-        typer.Option(help="With --trim-before-gmm: drop cells above this percentile before the GMM fit."),
+        typer.Option(
+            help="Cells above this percentile of the gene's copy numbers are left out, in the "
+            "same places as --min-copy-number."
+        ),
     ] = 99.9,
     filter_copy_number: Annotated[
         float,
@@ -311,6 +320,7 @@ def predict_ecdna(
     no_trim_before_gmm: Annotated[
         bool,
         typer.Option(
+            "--no-trim-before-gmm",
             help="GMM and KNN: do not trim the gene's cells with --min-copy-number and --max-percentile before fitting the GMM."
         ),
     ] = False,
@@ -358,7 +368,7 @@ def predict_ecdna(
     ] = 3,
     cNMF_num_iter: Annotated[
         int,
-        typer.Option(help="Number of iterations for cNMF."),
+        typer.Option(help="cNMF: number of factorization runs for each number of species tried."),
     ] = 50,
     ecDNA_remove_cutoff: Annotated[
         float,
@@ -370,7 +380,9 @@ def predict_ecdna(
     ] = 0.1,
     max_species: Annotated[
         int,
-        typer.Option(help="Maximum number of ecDNA species to consider for cNMF"),
+        typer.Option(
+            help="Largest number of ecDNA species to consider. Default: the number of genes - 1."
+        ),
     ] = None,
     num_species: Annotated[
         int,
@@ -404,7 +416,7 @@ def predict_ecdna(
     seed: Annotated[
         int,
         typer.Option(
-            help="Random seed for reproducibility. If not specified, uses a random seed."
+            help="Random seed for cNMF, for reproducible species. Default: random."
         ),
     ] = None,
 ) -> None:
