@@ -1,0 +1,19 @@
+name: tests
+
+# Runs the test suite (tests/), including the optional tests that use the pretrained
+# model and the COLO320DM data in data/.
+on: [push, pull_request]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      # The CPU build of torch is much smaller than the default CUDA build
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install ".[tests]"
+      - run: pytest
