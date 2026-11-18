@@ -5,21 +5,23 @@ Command-line tools for scAmp.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
+import time
 from typing import Annotated, Literal, Union
 import warnings
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 import scanpy as sc
 import typer
 
-from scamp import atac_cnv, vis, plotting, predict
+from scamp import atac_cnv, io, predict, vis
+from scamp.mixins.errors import CLIError
 
 scamp_app = typer.Typer(help="Tools for single-cell analysis of ecDNA.")
 
-AnnDataFileArg = Annotated[
-    str, typer.Option(help="File path to Anndata with copy-number data")
-]
+AnnDataFileArg = Annotated[str, typer.Option(help="File path to Anndata with copy-number data")]
 CopyNumberRangesDirArg = Annotated[
     str,
     typer.Option(
@@ -39,13 +41,9 @@ FragDirArg = Annotated[
         help="Path to directory containing ATAC fragment files. If only one file, use --fragment-file"
     ),
 ]
-ModelDirArg = Annotated[
-    str, typer.Argument(help="Path to saved model directory.")
-]
+ModelDirArg = Annotated[str, typer.Argument(help="Path to saved model directory.")]
 OutputDirArg = Annotated[str, typer.Argument(help="Directory of output files.")]
-WhitelistFileArg = Annotated[
-    str, typer.Option(help="File path to cellBC whitelist.")
-]
+WhitelistFileArg = Annotated[str, typer.Option(help="File path to cellBC whitelist.")]
 
 
 @scamp_app.command(name="atac-cnv-legacy", help="Quantify single-cell copy-numbers.")
@@ -54,40 +52,36 @@ def quantify_copy_numbers_legacy(
     copy_number_directory: CopyNumberRangesDirArg = None,
     fragment_directory: FragDirArg = None,
     whitelist_file: WhitelistFileArg = None,
-    window_size: Annotated[
-        int, typer.Option(help="Base pair width for genomic windows")
-    ] = 3000000,
+    window_size: Annotated[int, typer.Option(help="Base pair width for genomic windows")] = 3000000,
     step_size: Annotated[
         int,
         typer.Option(help="Step size from previous genomic window."),
     ] = 1000000,
     n_neighbors: Annotated[
         int,
-        typer.Option(
-            help="Number of genomic windows to compare against for normalization"
-        ),
+        typer.Option(help="Number of genomic windows to compare against for normalization"),
     ] = 200,
     reference_genome_name: Annotated[
         str,
         typer.Option(help="Reference genome name, to pair with a blacklist."),
     ] = "hg38",
 ):
-    print('Warning: This is a legacy command and may be deprecated in future '
-        'versions in favor of the python-based implementation `atac-cnv`.')
+    print(
+        "Warning: This is a legacy command and may be deprecated in future "
+        "versions in favor of the python-based implementation `atac-cnv`."
+    )
 
-    binned_copy_number_script = (
-        f"{os.path.dirname(__file__)}/scripts/scATAC_CNV.R"
-    )
-    gene_aggregation_script = (
-        f"{os.path.dirname(__file__)}/scripts/aggregate_gene_copy_number.R"
-    )
+    binned_copy_number_script = f"{os.path.dirname(__file__)}/scripts/scATAC_CNV.R"
+    gene_aggregation_script = f"{os.path.dirname(__file__)}/scripts/aggregate_gene_copy_number.R"
 
     # compute copy-numbers in genomic windows
     if fragment_directory:
-        
+
         if whitelist_file is None:
-            raise CLIError("If starting the copy-number pipeline from the " 
-                            "beginning, please provide a whitelist file")
+            raise CLIError(
+                "If starting the copy-number pipeline from the "
+                "beginning, please provide a whitelist file"
+            )
         print(
             f"Binning copy-numbers from {fragment_directory} in windows "
             f"of size {window_size}..."
@@ -110,6 +104,7 @@ def quantify_copy_numbers_legacy(
         f"{copy_number_directory} {output_directory} {reference_genome_name} {os.path.dirname(__file__)}"
     )
 
+
 @scamp_app.command(name="atac-cnv", help="Quantify single-cell copy-numbers.")
 def quantify_copy_numbers(
     output_directory: Annotated[
@@ -122,9 +117,7 @@ def quantify_copy_numbers(
             help="Path to directory containing ATAC fragment files. If only one file, use --fragment-file"
         ),
     ] = None,
-    fragment_file: Annotated[
-        str, typer.Option(help="Path to ATAC fragment file")
-    ] = None,
+    fragment_file: Annotated[str, typer.Option(help="Path to ATAC fragment file")] = None,
     sample_name: Annotated[
         str,
         typer.Option(
@@ -139,18 +132,14 @@ def quantify_copy_numbers(
             "present, skips the cell by window creation step"
         ),
     ] = None,
-    window_size: Annotated[
-        int, typer.Option(help="Base pair width for genomic windows")
-    ] = 3000000,
+    window_size: Annotated[int, typer.Option(help="Base pair width for genomic windows")] = 3000000,
     step_size: Annotated[
         int,
         typer.Option(help="Step size from previous genomic window."),
     ] = 1000000,
     n_neighbors: Annotated[
         int,
-        typer.Option(
-            help="Number of genomic windows to compare against for normalization"
-        ),
+        typer.Option(help="Number of genomic windows to compare against for normalization"),
     ] = 200,
     fragment_file_key: Annotated[
         str,
@@ -175,10 +164,8 @@ def quantify_copy_numbers(
     ] = True,
     reference_genome_name: Annotated[
         Literal["hg38", "hg19", "mm10", "mm39"],
-        typer.Option(
-            help="Reference genome name, to pair with a blacklist."
-        ),
-    ] = "hg38"
+        typer.Option(help="Reference genome name, to pair with a blacklist."),
+    ] = "hg38",
 ):
     if fragment_file is None and fragment_directory is None:
         print("Error: requires copy-numbers-file or copy-numbers-folder")
@@ -215,24 +202,19 @@ def quantify_copy_numbers(
         pickle_dir,
         recreate_pkl,
         fragment_file_key,
-        reference_genome_name
+        reference_genome_name,
     )
 
-@scamp_app.command(
-    name="visualize", help="Visualize ecDNA results with cellxgene"
-)
+
+@scamp_app.command(name="visualize", help="Visualize ecDNA results with cellxgene")
 def visualize(
     copy_numbers_file: Annotated[
         str,
-        typer.Argument(
-            help="Path to copy number data or copy number MEX folder"
-        ),
+        typer.Argument(help="Path to copy number data or copy number MEX folder"),
     ],
     expression_file: Annotated[
         str,
-        typer.Argument(
-            help="Path to the expression data or expression MEX folder"
-        ),
+        typer.Argument(help="Path to the expression data or expression MEX folder"),
     ],
     scamp_tsv: Annotated[str, typer.Argument(help="Scamp Predict tsv")],
     umap_name: Annotated[
@@ -298,56 +280,236 @@ def visualize(
     )
 
 
-@scamp_app.command(name="predict", help="Predict ecDNA status.")
+@scamp_app.command(name="predict", help="Predict ecDNA status with scRASCAL.")
 def predict_ecdna(
     output_dir: OutputDirArg,
-    model_file: ModelDirArg,
-    copy_numbers_file: CopyNumberFileArg = None,
-    anndata_file: AnnDataFileArg = None,
+    copy_numbers: Annotated[
+        str,
+        typer.Argument(help="MEX, csv, tsv, or anndata of copy numbers (cell by gene matrix)"),
+    ],
+    model_file: ModelDirArg = str(
+        Path(__file__).resolve().parent / "pretrained_models" / "scamp_model_1.0"
+    ),
     whitelist_file: WhitelistFileArg = None,
-    mode: Annotated[
-        str, typer.Option(help="Mode: (currently only offering `copynumber`)")
-    ] = "copynumber",
-    decision_rule: Annotated[
-        float, typer.Option(help="Likelihood decision rule.")
-    ] = 0.5,
+    cNMF_log_dir: Annotated[str, typer.Option(help="cNMF log dir")] = "./temp",
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose", help="Write more detail about the species deconvolution to log.log."
+        ),
+    ] = False,
+    decision_rule: Annotated[float, typer.Option(help="NN likelihood decision rule.")] = 0.5,
     min_copy_number: Annotated[
-        float, typer.Option(help="Minimum copy-number to consider.")
+        float,
+        typer.Option(
+            help="Cells with copy number at or below this are left out. SCAMP: when the model "
+            "scores the gene. GMM and KNN: before the GMM fit."
+        ),
     ] = 2.0,
     max_percentile: Annotated[
-        float, typer.Option(help="Maximum percentile to cap copy-numbers.")
-    ] = 99.0,
+        float,
+        typer.Option(
+            help="Cells above this percentile of the gene's copy numbers are left out, in the "
+            "same places as --min-copy-number."
+        ),
+    ] = 99.9,
     filter_copy_number: Annotated[
-         float, typer.Option(help="Drop genes whose mean copy-number is below this threshold.")
+        float,
+        typer.Option(help="Drop genes whose mean copy-number is below this threshold."),
     ] = 2.5,
-    no_plot: Annotated[
-        float, typer.Option(help="Suppress plotting functionality.")
-    ] = False
+    no_trim_before_gmm: Annotated[
+        bool,
+        typer.Option(
+            "--no-trim-before-gmm",
+            help="GMM and KNN: do not trim the gene's cells with --min-copy-number and --max-percentile before fitting the GMM."
+        ),
+    ] = False,
+    predict_method: Annotated[
+        Literal["SCAMP", "KNN", "GMM"],
+        typer.Option(help="Method to use for predicting ecDNA. NN (old version), KNN, or GMM"),
+    ] = "GMM",
+    deconvolution_method: Annotated[
+        Literal["hier", "cNMF", "auto"],
+        typer.Option(
+            help="Method to use for clustering genes into species. hier (hierarchical clustering based), cNMF, or auto (automatically chooses method)"
+        ),
+    ] = "auto",
+    one_thresh: Annotated[
+        float,
+        typer.Option(help="Threshold for choosing one distribution in GMM/KNN + GMM."),
+    ] = 1.15,
+    kneedle_coeff: Annotated[
+        float,
+        typer.Option(help="Higher means kneedle tends to fewer GMM distributions."),
+    ] = 3,
+    hier_ddist: Annotated[
+        float,
+        typer.Option(help="Distance for null nodes in hierarchical clustering."),
+    ] = 1.3,
+    min_weight: Annotated[
+        float,
+        typer.Option(help="Distributions with lower weight are ignored in GMM."),
+    ] = 0.005,
+    var_scale: Annotated[
+        float,
+        typer.Option(help="Scaled GMM parameter. Greater value decreases false positives."),
+    ] = 0.5,
+    k: Annotated[int, typer.Option(help="Number of nearest neighbors for KNN.")] = 100,
+    overlap_thresh: Annotated[
+        float, typer.Option(help="Threshold for choosing cNMF when using auto")
+    ] = 0.55,
+    error_w: Annotated[
+        float,
+        typer.Option(help="Importance of error in deciding cNMF number of ecDNA species"),
+    ] = 0.25,
+    deconvolution_score_cutoff: Annotated[
+        float,
+        typer.Option(help="Cutoff for deciding a gene belongs to a species of ecDNA"),
+    ] = 3,
+    cNMF_num_iter: Annotated[
+        int,
+        typer.Option(help="cNMF: number of factorization runs for each number of species tried."),
+    ] = 50,
+    ecDNA_remove_cutoff: Annotated[
+        float,
+        typer.Option(help="Remove ecDNA whose highest cNMF spectra is below this value"),
+    ] = 0.01,
+    cNMF_density_threshold: Annotated[
+        float,
+        typer.Option(help="Density threshold for the cNMF consensus"),
+    ] = 0.1,
+    max_species: Annotated[
+        int,
+        typer.Option(
+            help="Largest number of ecDNA species to consider. Default: the number of genes - 1."
+        ),
+    ] = None,
+    num_species: Annotated[
+        int,
+        typer.Option(help="Number of ecDNA species to consider for deconvolution"),
+    ] = None,
+    n_draws: Annotated[
+        int,
+        typer.Option(
+            help="GMM: draws of 1,000 sampled cells per distribution; the call uses the mean probability."
+        ),
+    ] = 1,
+    no_single_dist_scamp: Annotated[
+        bool,
+        typer.Option(
+            "--no-single-dist-scamp",
+            help="GMM: if only one distribution has weight > --min-weight, do not score the gene with published scAmp parameters",
+        ),
+    ] = False,
+    knn_min_mean: Annotated[
+        float,
+        typer.Option(
+            help="KNN gate: score a neighbourhood only if its mean exceeds this. -inf = off."
+        ),
+    ] = 2.5,
+    knn_min_var: Annotated[
+        float,
+        typer.Option(
+            help="KNN gate: score a neighbourhood only if its variance exceeds this. -inf = off."
+        ),
+    ] = 10,
+    seed: Annotated[
+        int,
+        typer.Option(
+            help="Random seed for cNMF, for reproducible species. Default: random."
+        ),
+    ] = None,
 ) -> None:
 
-    if copy_numbers_file is None and copy_numbers_folder is None:
-        print("Error: requires copy-numbers-file or copy-numbers-folder")
+    os.makedirs(output_dir, exist_ok=True)
+    out_log = []
 
-    if mode == "copynumber":
+    out_log = [
+        f"Settings\nModel path: {model_file}\nDecision rule: {decision_rule}\nPrediction method: {predict_method}\nDeconvolution method: {deconvolution_method}"
+    ]
+    out_log.append(f"Copy number filter: {filter_copy_number}")
+    out_log.append(f"Min copy number (keep >): {min_copy_number}")
+    out_log.append(f"Max percentile (keep <=): {max_percentile}")
 
-        predictions = predict.predict_ecDNA_in_sample(
-            copy_numbers_file,
-            output_dir,
-            model_file,
-            whitelist_file,
-            decision_rule,
-            min_copy_number,
-            max_percentile,
-            filter_copy_number,
-            no_plot,
-        )
+    if predict_method == "GMM":
+        out_log.append(f"GMM kneedle coefficient: {kneedle_coeff}")
+        out_log.append(f"GMM min weight: {min_weight}")
+        out_log.append(f"GMM var scale: {var_scale}")
 
-        predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
-        if not no_plot:
-            plotting.plot_scamp_predictions_plotly(
-                predictions,
-                f"{output_dir}/ecDNA_predictions.html",
-                title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
-            )
+        out_log.append(f"Single distribution -> scAmp scoring: {not no_single_dist_scamp}")
+        out_log.append(f"One thresh: {one_thresh}")
+        out_log.append(f"Also trim cells before the GMM fit: {not no_trim_before_gmm}")
 
-        print(f"Output written out to {output_dir}.")
+    if predict_method == "KNN":
+        out_log.append(f"Number of neighbors (k): {k}")
+        out_log.append(f"KNN gate: mean > {knn_min_mean} and var > {knn_min_var}")
+
+
+    counts_df = io.read_copy_numbers_file(copy_numbers)
+
+    # Detect extension
+    out_log.append(f"Running {copy_numbers}")
+    start = time.time()
+    filename = Path(copy_numbers).stem
+
+    prediction_df, out_log = predict.predict(
+        counts_df,
+        out_log,
+        model_file,
+        whitelist_file,
+        decision_rule=decision_rule,
+        filter_copy_number=filter_copy_number,
+        predict_method=predict_method,
+        one_thresh=one_thresh,
+        kneedle_coeff=kneedle_coeff,
+        min_weight=min_weight,
+        var_scale=var_scale,
+        k=k,
+        verbose=False,
+        min_copy_number=min_copy_number,
+        max_percentile=max_percentile,
+        trim_before_gmm= (not no_trim_before_gmm),
+        n_draws=n_draws,
+        single_dist_scamp=(not no_single_dist_scamp),
+        knn_min_mean=knn_min_mean,
+        knn_min_var=knn_min_var,
+    )
+
+    prediction_df, cell_by_ecDNA, out_log = predict.cluster(
+        filename,
+        prediction_df,
+        counts_df,
+        deconvolution_method,
+        hier_ddist,
+        overlap_thresh,
+        cNMF_num_iter,
+        error_w,
+        deconvolution_score_cutoff,
+        ecDNA_remove_cutoff,
+        cNMF_density_threshold,
+        max_species,
+        num_species,
+        cNMF_log_dir,
+        out_log,
+        verbose,
+        seed
+    )
+
+    prediction_df.to_csv(f"{output_dir}/ecDNA_preds_{filename}.tsv", sep="\t", index=False)
+    # Keep the cell barcodes as the first column, as in the input copy-number file
+    cell_by_ecDNA.to_csv(f"{output_dir}/cell_by_ecDNA_{filename}.tsv", sep="\t")
+
+    # predictions.to_csv(f"{output_dir}/model_predictions.tsv", sep='\t')
+    # if not no_plot:
+    #     plotting.plot_scamp_predictions_plotly(
+    #         predictions,
+    #         f"{output_dir}/ecDNA_predictions.html",
+    #         title=f"scAmp predictions for {copy_numbers_file.split('/')[-1]}"
+    #     )
+
+    end = time.time()
+    out_log.append(f"File {copy_numbers} completed in {end - start:.2f} seconds")
+
+    with open(f"{output_dir}/log.log", "w") as f:
+        f.writelines(line + "\n" for line in out_log)
+    print(f"Output written out to {output_dir}.")

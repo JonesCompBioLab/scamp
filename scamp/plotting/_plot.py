@@ -17,14 +17,14 @@ def plot_scamp_predictions_plotly(
 
     Args:
         prediction_df: A prediction dataframe as returned from a scAmp pipeline.
-            Has at least the following columns: `mean`, `var`, `pred`, and
+            Has at least the following columns: `mean`, `var`, `prediction`, and
             `gene`.
         output_file_name: Where to write the output file.
     """
     fig = go.Figure()
 
-    false_predictions = prediction_df[prediction_df["pred"] == False]
-    true_predictions = prediction_df[prediction_df["pred"] == True]
+    false_predictions = prediction_df[prediction_df["prediction"] == False]
+    true_predictions = prediction_df[prediction_df["prediction"] == True]
 
     trace1 = go.Scatter(
         x=false_predictions["mean"],

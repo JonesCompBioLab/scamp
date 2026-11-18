@@ -62,7 +62,7 @@ def setup_anndata(
     # get only ecDNA rows
     for index, row in scamp.iterrows():
         gene = row["gene"]
-        if row["pred"]:
+        if row["prediction"]:
             new_row = {
                 "gene_set_name": "All ecDNA Genes",
                 "gene_set_description": "Predicted ecDNA by scAmp",
@@ -71,22 +71,24 @@ def setup_anndata(
             }
             gene_set_df.loc[len(gene_set_df)] = new_row
 
-            # gene clusters
-            if "cluster" in row:
-                new_row = {
-                    "gene_set_name": f"ecDNA Cluster {row['cluster']}",
-                    "gene_set_description": (f"Predicted ecDNA by scAmp, cluster {row['cluster']}"),
-                    "gene_symbol": gene,
-                    "gene_description": "",
-                }
-                gene_set_df.loc[len(gene_set_df)] = new_row
+            # ecDNA species; a gene can belong to several, comma-separated
+            species = row.get("Species")
+            if pd.notna(species) and species != "None":
+                for name in str(species).split(","):
+                    new_row = {
+                        "gene_set_name": f"ecDNA Species {name}",
+                        "gene_set_description": f"Predicted ecDNA by scAmp, species {name}",
+                        "gene_symbol": gene,
+                        "gene_description": "",
+                    }
+                    gene_set_df.loc[len(gene_set_df)] = new_row
 
     gene_set_df.to_csv(f"{temp_folder}/ecDNA_gene_set.csv", index=False)
 
     # Add cell sets
     add_cell_sets(copy_number_adata, gene_set_df, cn_threshold, cn_percentile_threshold)
 
-    ecdna_obs = adata.obs
+    ecdna_obs = copy_number_adata.obs
     adata = expression_adata.copy()
     adata.var_names_make_unique()
     adata.obs = ecdna_obs
@@ -117,7 +119,7 @@ def add_cell_sets(
             ecDNA-positive cells.
     """
     # Get list of genes
-    gene_list = gene_set_df["gene_symbol"].tolist()
+    gene_list = gene_set_df["gene_symbol"].unique().tolist()
 
     # Only get ecDNA genes
     X_ecDNA = adata[:, gene_list].X
@@ -161,7 +163,7 @@ def setup_expression(
     Args:
         expression_data: Path to expression CSV or TSV file.
         cn_adata: Copy-number anndata object used to subset genes.
-    
+
     Returns:
         An anndata object with expression data for genes present in cn_adata.
     """
